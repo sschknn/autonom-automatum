@@ -114,13 +114,18 @@ class AutonomAutomatum:
                         if self.wallet:
                             self.wallet.increase_target(reward)
                             self.log.info(f"Wallet-Target erhöht: +{reward:.2f} (aktuell: {self.wallet.get_real_target_balance():.2f})")
-                        # Web3 Automatisierung: Echte ETH-Transaktion (nur LIVE, kein Demo)
+                        # Web3: Echte Transaktion wird NICHT automatisch gesendet.
+                        # Signierte dry_run-Berechnung zeigt echte Kosten.
                         if self.web3_engine and self.web3_engine.is_ready():
-                            tx_result = self.web3_engine.send_transaction(
-                                "0x0000000000000000000000000000000000000000",
-                                0.001
-                            )
-                            self.log.info(f"Web3 LIVE-Transaktion: {tx_result['status']} | Von: {tx_result.get('from', 'N/A')} | Nachricht: {tx_result.get('message', '')}")
+                            try:
+                                tx_cost = self.web3_engine.estimate_tx_cost_eth()
+                                if tx_cost is not None:
+                                    self.log.info(
+                                        f"Web3 Mainnet: TX-Kosten ~{tx_cost:.8f} ETH | "
+                                        f"Balance {self.web3_engine.get_balance_real():.8f} ETH"
+                                    )
+                            except Exception as exc:
+                                self.log.warning(f"Web3 Kostenprüfung fehlgeschlagen: {exc}")
                         self.db.complete_task(task["id"], out_path, config.ENERGY_COST_PER_TASK)
                         # Original aus Inbox entfernen nach Verarbeitung
                         try:
@@ -136,13 +141,16 @@ class AutonomAutomatum:
                 self.log.error(f"Verarbeitungsfehler bei Task {task.get('id')}: {exc}")
                 if isinstance(task, dict) and task.get("id"):
                     self.db.fail_task(task["id"], str(exc), config.ENERGY_COST_PER_TASK / 2)
-        # Trading-Bot: Echte Krypto-Transaktionen durchführen (nur LIVE)
+        # Trading-Bot: Echte Marktanalyse + vorbereitete Mainnet-Transaktion (dry_run)
         if self.trading_bot:
-            trade_result = self.trading_bot.trade_cycle()
-            if trade_result.get("status") == "LIVE":
-                self.log.info(f"TRADING-BOT LIVE: {trade_result['message']} | ETH: {trade_result['amount_eth']}")
-            else:
-                self.log.info(f"TRADING-BOT: {trade_result.get('message', trade_result.get('status'))}")
+            try:
+                decision = self.trading_bot.analyze()
+                self.log.info(
+                    f"TRADING: {decision['action']} | Konfidenz {decision['confidence']} | "
+                    f"{decision['reason']} | ETH {decision['wallet']['balance_eth']:.6f}"
+                )
+            except Exception as exc:
+                self.log.error(f"Trading-Bot Fehler: {exc}")
 
     def _file_exists_in_db(self, full_path):
         with self.db._connect() as conn:

@@ -9,6 +9,7 @@ import os
 import json
 import hashlib
 import secrets
+from datetime import datetime
 from core import config
 
 WALLET_DIR = os.path.join(config.BASE_DIR, "wallet")
@@ -20,27 +21,93 @@ class WalletEngine:
         self.wallet_path = WALLET_FILE
         self.data = self._load_or_create()
 
+    def _derive_address(self, private_key_hex):
+        """Leitet die ECHTE Ethereum-Adresse aus dem Private Key ab.
+
+        Korrekte Kette: secp256k1-ECDSA -> Public Key (64 Byte, ohne 0x04)
+        -> Keccak-256 -> letzte 20 Bytes -> Checksum-Adresse.
+        Früher wurde hier fälschlich sha3_256(seed)[-20:] verwendet, was
+        eine Adresse ergibt, zu der es keinen passenden Private Key gibt.
+        """
+        try:
+            from eth_account import Account
+            acct = Account.from_key("0x" + private_key_hex if not private_key_hex.startswith("0x") else private_key_hex)
+            return acct.address, None
+        except ImportError:
+            return None, "eth-account fehlt (pip install web3)"
+        except Exception as exc:
+            return None, str(exc)
+
+    def verify_key_pair(self):
+        """Prüft ob Address und Private Key zusammenpassen.
+
+        Gibt (ok, message) zurück. Ein Mismatch bedeutet: das Guthaben
+        auf der Adresse gehört NICHT zu diesem Private Key.
+        """
+        pk = self.data.get("private_key_hex")
+        stored = self.data.get("public_address")
+        if not pk:
+            return False, "Kein Private Key vorhanden."
+        derived, err = self._derive_address(pk)
+        if err:
+            return False, f"Adresse nicht ableitbar: {err}"
+        if derived.lower() != (stored or "").lower():
+            return False, (
+                f"MISMATCH! Datei: {stored} | Key gehört: {derived}. "
+                "Das ETH auf der Datei-Adresse kann mit diesem Key NICHT ausgegeben werden."
+            )
+        return True, f"Key-Paar korrekt: {derived}"
+
     def _load_or_create(self):
         if os.path.isfile(self.wallet_path):
             with open(self.wallet_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        # Echte Key-Generierung (kryptografisch sicher)
-        # 32 Byte Private Key Seed -> SHA3-256 (ETH-kompatibel als Beispiel)
-        private_seed_bytes = secrets.token_bytes(32)
-        private_key_hex = private_seed_bytes.hex()
-        # Public Key Derivation: Keccak-256 (simuliert für echte ETH-Kompatibilität)
-        # Ohne pycryptodome/web3 nutzen wir SHA3-256 als Proxy für echte Address-Ableitung
-        public_key_bytes = hashlib.sha3_256(private_seed_bytes).digest()[-20:]
-        public_address = "0x" + public_key_bytes.hex()
+                data = json.load(f)
+            # Bestehende Wallet auf Konsistenz prüfen
+            ok, msg = self.verify(data)
+            if not ok and "MISMATCH" in msg:
+                print(f"[WALLET-WARNUNG] {msg}")
+            return data
+        return self._create_new()
+
+    def verify(self, data):
+        pk = data.get("private_key_hex")
+        stored = data.get("public_address")
+        if not pk:
+            return False, "Kein Private Key vorhanden."
+        derived, err = self._derive_address(pk)
+        if err:
+            return False, f"Adresse nicht ableitbar: {err}"
+        if derived.lower() != (stored or "").lower():
+            return False, (
+                f"MISMATCH! Datei: {stored} | Key gehört: {derived}. "
+                "Das ETH auf der Datei-Adresse kann mit diesem Key NICHT ausgegeben werden."
+            )
+        return True, f"Key-Paar korrekt: {derived}"
+
+    def _create_new(self):
+        """Erzeugt ein neues Wallet mit echter ECDSA-Adressableitung."""
+        try:
+            from eth_account import Account
+            acct = Account.create(secrets.token_bytes(32) if hasattr(secrets, "token_bytes") else None)
+            private_key_hex = acct.key.hex()
+            if private_key_hex.startswith("0x"):
+                private_key_hex = private_key_hex[2:]
+            public_address = acct.address
+        except Exception as exc:
+            raise RuntimeError(
+                f"Wallet-Erstellung fehlgeschlagen: {exc}. Installiere: pip install web3"
+            ) from exc
+
         wallet_data = {
-            "type": "autonom_ki_wallet_real",
-            "network_hint": "ethereum_mainnet_compatible",
+            "type": "autonom_ki_wallet_ecdsa",
+            "network_hint": "ethereum_mainnet",
             "public_address": public_address,
             "private_key_hex": private_key_hex,
             "balance_target": 0.0,
-            "created_at": "2026-10-13T00:00:00Z",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
             "genesis_block": "autonom-automatum-genesis-001",
-            "security_notice": "Private Key nur lokal. Für echte Transaktionen: Node-API + Signatur-Bibliothek erforderlich."
+            "derivation": "secp256k1-ECDSA -> Keccak-256 -> 20 Byte (echt)",
+            "security_notice": "Private Key nur lokal. Niemals committen oder teilen.",
         }
         with open(self.wallet_path, "w", encoding="utf-8") as f:
             json.dump(wallet_data, f, indent=2)
