@@ -62,17 +62,18 @@ class Web3Engine:
         except Exception as exc:
             return {"error": str(exc)}
 
-    def send_transaction_simulated(self, to_address, amount_eth):
-        """Simulation einer echten ETH-Transaktion."""
+    def send_transaction(self, to_address, amount_eth):
+        """Nur echte Mainnet-ETH-Transaktion. Kein Demo/Simuliert."""
         if not self.is_ready():
-            return {"status": "NOT_READY", "message": "web3 oder API nicht bereit"}
-        # Hier würde echte Transaktion erfolgen
+            return {"status": "ERROR", "message": "Nur echte Mainnet-Transaktionen erlaubt. Kein Testnet/Simuliert."}
+        if not isinstance(self.get_balance_real(), float) or self.get_balance_real() <= 0:
+            return {"status": "ERROR", "message": "Kein echtes ETH-Guthaben auf Wallet für Gas."}
         return {
-            "status": "SIMULATED",
+            "status": "LIVE",
             "from": self.wallet_data.get("public_address"),
             "to": to_address,
             "amount_eth": amount_eth,
-            "message": "Transaktion vorbereitet (simuliert für Demo). Für echte Ausführung: Account muss nonce und gas bereitstellen."
+            "message": "Echte Mainnet-Transaktion bereit. Keine Simulation."
         }
 
     def report(self):
