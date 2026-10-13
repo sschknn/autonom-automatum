@@ -24,13 +24,43 @@ class OpenRouterEngine:
         return self.config.get("api_key")
 
     def get_models_available(self):
-        # Free-Modelle über OpenRouter (Router verteilt auf verschiedene Anbieter)
-        return [
-            "mistralai/mistral-7b-instruct",
-            "meta-llama/llama-3.1-8b-instruct",
-            "qwen/qwen-2.5-7b-instruct",
-            "google/gemma-2-9b-it"
-        ]
+        """openrouter/free ist der Router: er waehlt automatisch ein freies,
+        verfuegbares Modell. Einzelne Modell-IDs sind unzuverlaessig (404/402)."""
+        return ["openrouter/free"]
+
+    def chat(self, messages, max_tokens=400):
+        """Echter Chat-Call an OpenRouter. Gibt immer Text zurueck.
+
+        Wichtig: Auch bei Fehlern wird ein lesbarer Text geliefert, damit die
+        GUI nie haengen bleibt. Der Aufrufer bekommt keine None.
+        """
+        if not self.is_active():
+            return ("[OpenRouter inaktiv] Kein gueltiger Key in "
+                    "wallet/openrouter_key.json gefunden.")
+        payload = {
+            "model": "openrouter/free",
+            "messages": messages,
+            "max_tokens": max_tokens,
+            "temperature": 0.3,
+        }
+        headers = {
+            "Authorization": f"Bearer {self.get_key()}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://github.com/sschknn/autonom-automatum",
+            "X-Title": "autonom-automatum",
+        }
+        try:
+            import requests
+            r = requests.post(f"{self.config['base_url']}/chat/completions",
+                              headers=headers, json=payload, timeout=60)
+            if r.status_code != 200:
+                return (f"[OpenRouter HTTP {r.status_code}] {r.text[:200]}\n\n"
+                        "Der Free-Router ist oft ueberlastet - bitte erneut versuchen.")
+            data = r.json()
+            inhalt = data["choices"][0]["message"]["content"]
+            return inhalt if inhalt and inhalt.strip() else "[Leere Antwort vom Modell]"
+        except Exception as exc:
+            return f"[Verbindungsfehler zu OpenRouter: {exc}]"
 
     def report(self):
         return (f"OpenRouter Status: {'AKTIV' if self.is_active() else 'INAKTIV'} | "

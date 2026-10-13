@@ -12,6 +12,27 @@
       "action": "HOLD",
       "confidence": 0.0,
       "reason": ""
+    },
+    {
+      "ts": "2026-10-13 06:56:36",
+      "price": 2516.84,
+      "action": "HOLD",
+      "confidence": 0.0,
+      "reason": ""
+    },
+    {
+      "ts": "2026-10-13 07:01:40",
+      "price": 2512.55,
+      "action": "HOLD",
+      "confidence": 0.0,
+      "reason": ""
+    },
+    {
+      "ts": "2026-10-13 07:06:43",
+      "price": 2510.77,
+      "action": "HOLD",
+      "confidence": 0.0,
+      "reason": ""
     }
   ],
   "equity_curve": [],
