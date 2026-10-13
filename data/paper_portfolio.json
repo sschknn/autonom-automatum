@@ -1,0 +1,21 @@
+{
+  "symbol": "ETHUSDC",
+  "quote": 6.79,
+  "base": 0.0,
+  "realized_pnl": 0.0,
+  "fees_paid": 0.0,
+  "trades": [],
+  "signals": [
+    {
+      "ts": "2026-10-13 06:51:32",
+      "price": 2512.55,
+      "action": "HOLD",
+      "confidence": 0.0,
+      "reason": ""
+    }
+  ],
+  "equity_curve": [],
+  "started": "2026-10-13 06:51:20",
+  "peak_equity": 6.79,
+  "initial_quote": 6.79
+}

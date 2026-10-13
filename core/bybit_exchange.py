@@ -34,13 +34,32 @@ DEFAULT_HOST = "eu"
 class BybitExchange:
     """Bybit V5 REST Client. Signierung nach Bybit-Spec."""
 
-    def __init__(self, host=DEFAULT_HOST, keys_file=KEYS_FILE, recv_window=5000):
+    def __init__(self, host=DEFAULT_HOST, keys_file=KEYS_FILE, recv_window=30000):
         self.base = HOSTS.get(host, HOSTS[DEFAULT_HOST])
         self.host_name = host
+        # Bybit erlaubt max. 5s Toleranz bei privaten Calls. Unsere lokale
+        # Uhr kann abweichen -> Offset aus der Serverzeit holen.
         self.recv_window = recv_window
+        self.time_offset_ms = 0
         self.session = requests.Session()
         self.keys = self._load_keys(keys_file)
         self.has_keys = bool(self.keys.get("api_key") and self.keys.get("api_secret"))
+        if self.has_keys:
+            self.sync_time()
+
+    def sync_time(self):
+        """Berechnet den Versatz zwischen lokaler Uhr und Bybit-Server."""
+        try:
+            r = self.session.get(self.base + "/v5/market/time", timeout=10)
+            server_ms = int(r.json()["result"]["timeSecond"]) * 1000
+            local_ms = int(time.time() * 1000)
+            self.time_offset_ms = server_ms - local_ms
+            if abs(self.time_offset_ms) > 1000:
+                _log.info(f"Bybit-Zeitversatz erkannt: {self.time_offset_ms} ms - Signatur wird korrigiert.")
+            return self.time_offset_ms
+        except Exception as exc:
+            _log.error(f"Serverzeit nicht abrufbar: {exc}")
+            return 0
 
     # ---------- Keys ----------
     @staticmethod
@@ -58,9 +77,13 @@ class BybitExchange:
 
     # ---------- HTTP ----------
     def _sign(self, params):
-        """Bybit V5: signiert timestamp + apiKey + recvWindow + querystring."""
-        ts = str(int(time.time() * 1000))
-        recv = str(self.recv_window)
+        """Bybit V5: signiert timestamp + apiKey + recvWindow + querystring.
+
+        Der Timestamp wird um time_offset_ms korrigiert, sonst lehnt Bybit
+        den Call mit retCode 10002 ab (retData: server timestamp mismatch).
+        """
+        ts = str(int(time.time() * 1000) + self.time_offset_ms)
+        recv = str(min(self.recv_window, 5000))   # Bybit akzeptiert max 5000
         # Bybit verlangt die Parameter alphabetisch sortiert
         query = "&".join(f"{k}={params[k]}" for k in sorted(params))
         payload = ts + self.keys["api_key"] + recv + query
@@ -157,13 +180,29 @@ class BybitExchange:
         return out
 
     # ---------- Private Endpunkte ----------
-    def wallet_balance(self, account_type="UNIFIED"):
-        d = self._get("/v5/account/wallet-balance",
-                      {"accountType": account_type, "coin": "USDT"}, private=True)
+    def wallet_balance(self, account_type="UNIFIED", coin=None):
+        """Kontostand. Bybit liefert die Liste unter result.list[0].coin."""
+        params = {"accountType": account_type}
+        if coin:
+            params["coin"] = coin
+        d = self._get("/v5/account/wallet-balance", params, private=True)
         if d.get("retCode") != 0:
             return d
-        coins = d.get("result", {}).get("list", [{}])[0].get("total", [])
-        return {"retCode": 0, "coins": {c["coin"]: float(c["total"]) for c in coins}}
+        acct = (d.get("result", {}).get("list") or [{}])[0]
+        coins = acct.get("coin", []) or []
+        balances = {}
+        for c in coins:
+            eq = float(c.get("equity") or 0)
+            avail = float(c.get("walletBalance") or 0)
+            if eq > 0 or avail > 0:
+                balances[c.get("coin")] = {"equity": eq, "available": avail}
+        return {
+            "retCode": 0,
+            "coins": balances,
+            "total_equity": float(acct.get("totalEquity") or 0),
+            "total_available": float(acct.get("totalAvailableBalance") or 0),
+            "account_type": acct.get("accountType"),
+        }
 
     _instr_cache = {}
 
@@ -208,11 +247,13 @@ class BybitExchange:
         info = self.instrument(symbol) or {}
         lot = info.get("lotSizeFilter", {}) or {}
         min_qty = float(lot.get("minOrderQty") or 0)
-        step = lot.get("qtyStep") or "0"
+        # Bybit EU liefert basePrecision, die globale API qtyStep.
+        step = lot.get("qtyStep") or lot.get("basePrecision") or "0"
+        min_amt = float(lot.get("minOrderAmt") or 0)   # Mindest-Notional in Quote
         if step and float(step) > 0:
             qty = self._floor_step(qty, step)
         if min_qty and qty < min_qty:
-            return {"retCode": -1, "min_qty": min_qty, "qty_step": step,
+            return {"retCode": -1, "min_qty": min_qty, "qty_step": step, "min_order_amt": min_amt,
                     "retMsg": f"Qty {qty} < Bybit-Minimum {min_qty} {symbol}. Order verworfen."}
         if qty <= 0:
             return {"retCode": -1, "qty_step": step,
@@ -236,16 +277,27 @@ class BybitExchange:
         if not snap.get("last"):
             return {"retCode": -1, "retMsg": "Kein Marktdaten - Order verworfen."}
 
+        # Mindest-Notional (Bybit: minOrderAmt in Quote-Waehrung)
+        _price = price if price else (snap["ask"] if side == "Buy" else snap["bid"])
+        if min_amt and qty * _price < min_amt:
+            need = min_amt / _price
+            return {"retCode": -1, "min_order_amt": min_amt, "qty": qty,
+                    "est_quote": round(qty * _price, 4), "needed_qty": round(need, 6),
+                    "retMsg": (f"Notional {qty*_price:.2f} < Mindestbetrag {min_amt:.0f}. "
+                               f"Noetig: ca. {need:.6f} ETH")}
+
         if dry_run:
             est_price = price if price else (snap["ask"] if side == "Buy" else snap["bid"])
             notional = round(qty * est_price, 4)
+            quote = symbol.split("-")[0]
             return {
                 "retCode": 0, "dry_run": True,
                 "symbol": symbol, "side": side, "type": order_type,
                 "qty": qty, "est_price": est_price, "est_quote": notional,
-                "min_qty": min_qty, "qty_step": step,
+                "min_qty": min_qty, "qty_step": step, "min_order_amt": min_amt,
                 "fee_estimate_pct": 0.1,
                 "est_fee": round(notional * 0.001, 6),
+                "spread_cost": round(abs(snap["ask"] - snap["bid"]) * qty, 6),
                 "message": "DRY-RUN: Order NICHT gesendet. dry_run=False sendet sie live.",
             }
 
@@ -265,10 +317,27 @@ class BybitExchange:
                           {"category": "spot", "symbol": symbol, "orderId": order_id})
 
     def config_info(self):
-        """Prueft ob die Keys gueltig sind und welche Permissions gelten."""
+        """Prueft ob die Keys gueltig sind und welche Permissions gelten.
+
+        /v5/account/constraints existiert auf Bybit EU nicht (liefert kein JSON).
+        /v5/user/query-api gibt stattdessen die eigenen Key-Daten zurueck.
+        """
         if not self.has_keys:
             return {"ok": False, "reason": "Keine Keys hinterlegt (nur oeffentliche Daten)."}
-        d = self._get("/v5/account/constraints", {"accountType": "UNIFIED"}, private=True)
-        return {"ok": d.get("retCode") == 0,
-                "retMsg": d.get("retMsg"),
-                "details": d.get("result", {})}
+        self.sync_time()
+        d = self._get("/v5/user/query-api", {}, private=True)
+        res = d.get("result", {}) or {}
+        info = res.get("info", {}) if isinstance(res, dict) else {}
+        perms = []
+        for k in ("readOnly", "ips", "permissions", "type"):
+            if k in info:
+                perms.append(f"{k}={info[k]}")
+        return {
+            "ok": d.get("retCode") == 0,
+            "retMsg": d.get("retMsg"),
+            "read_only": info.get("readOnly"),
+            "ips": info.get("ips"),
+            "permissions": info.get("permissions"),
+            "key_type": info.get("type"),
+            "summary": " | ".join(perms) if perms else None,
+        }
