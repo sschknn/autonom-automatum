@@ -16,6 +16,8 @@ WALLET_DIR = os.path.join(config.BASE_DIR, "wallet")
 WALLET_FILE = os.path.join(WALLET_DIR, "local_wallet.json")
 
 class WalletEngine:
+    _warned = set()   # Warnung nur einmal pro Prozess ausgeben
+
     def __init__(self):
         os.makedirs(WALLET_DIR, exist_ok=True)
         self.wallet_path = WALLET_FILE
@@ -62,9 +64,10 @@ class WalletEngine:
         if os.path.isfile(self.wallet_path):
             with open(self.wallet_path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            # Bestehende Wallet auf Konsistenz prüfen
+            # Bestehende Wallet auf Konsistenz prüfen (Warnung nur einmal)
             ok, msg = self.verify(data)
-            if not ok and "MISMATCH" in msg:
+            if not ok and "MISMATCH" in msg and "mismatch" not in WalletEngine._warned:
+                WalletEngine._warned.add("mismatch")
                 print(f"[WALLET-WARNUNG] {msg}")
             return data
         return self._create_new()
