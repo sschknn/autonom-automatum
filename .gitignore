@@ -9,3 +9,7 @@ wallet/*.png
 core/__pycache__/
 *.log
 data/autonom_core.db
+
+# Ausgabeordner: Hash-Ausgaben sind keine Produkte
+outbox/
+
