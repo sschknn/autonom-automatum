@@ -1,0 +1,19 @@
+# Laufzeitabhängigkeiten
+
+# Python >= 3.10 erforderlich
+
+# --- Börse / Web3 ---
+requests>=2.31.0            # Bybit V5 REST API
+web3>=6.0.0                 # On-Chain-Transaktionen (Alchemy-Node)
+eth-account>=0.10.0         # ECDSA-Signierung (Teil von web3)
+
+# --- GUI ---
+# tkinter ist in der Standardinstallation von Python enthalten
+# (Windows/Mac: mitinstalliert, Linux: apt install python3-tk)
+
+# --- Optional: LLM-Assistent ---
+# Der Assistent nutzt die OpenRouter-REST-Schnittstelle direkt über
+# requests. Keine zusätzliche Bibliothek nötig.
+
+# --- Entwicklung / Tests ---
+# pytest>=7.0.0            # optional

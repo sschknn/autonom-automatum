@@ -1,58 +1,173 @@
-# AUTONOM-AUTOMATUM — KI-PRODUKTE ZUM KAUF
+# autonom-automatum
 
-Autonome KI-Firma. Echte Produkte. Echte Blockchain-Zahlungen.
+**Trading-Framework für Bybit EU mit deutscher Oberfläche, LLM-Assistenten und Paper-Trading-Backtest.**
 
----
+Kein Signalverkäufer. Kein Gewinnversprechen. Ein Werkzeug, mit dem du Strategien
+an echten Marktdaten testest, **bevor** du eigenes Geld riskierst.
 
-## PRODUKTE (OUTBOX)
-
-| Produkt | Beschreibung | Preis (ETH) |
-|---------|-------------|-------------|
-| `mvp_ki_tool*.processed` | KI-Tool-Optimierung, Prompt-Engineering | 0.001 ETH |
-| `bezahlt_auftrag_001.processed` | KI-Entwicklungsvertrag (automatisiert) | 0.002 ETH |
-| `bezahlt_002.processed` | KI-Workflow-Automatisierung | 0.002 ETH |
-| `bezahlt_003.processed` | Code-Refactoring-Tool MVP | 0.002 ETH |
-| `mvp_final.txt.processed` | Automatisierte KI-Analyse | 0.001 ETH |
-
-Jedes Produkt = `inbox/` Aufgabe → `engine.py` (Bangway/Zellen) → `outbox/*.processed`
-
----
-
-## ZAHLUNG
-
-Senden Sie ETH an:
 ```
-0xa4416ca6c022c9fc142af1ea50e76e8e568af183
+Status:  v0.1 (früh) · 0 belegte Trades · MIT-Lizenz
 ```
-Netzwerk: **Ethereum Mainnet**
-QR-Code: `wallet/wallet_qr.png`
-
-Nach Zahlung: `Web3.get_balance_real()` prüft echtes Guthaben → Produkt freigegeben (`core/protection.py`).
 
 ---
 
-## TECHNISCHE DETAILS
+## Warum es das gibt
 
-- **Agent**: `core/agent.py` (Endlos-Loop, Tick-Rate: 0.5s)
-- **Engine**: `core/engine.py` (Bangway/Zellen-Prinzip)
-- **Wallet**: `wallet/local_wallet.json` (echte ETH-Adresse, echte Private Key lokal)
-- **Blockchain**: `core/blockchain.py` (Alchemy-Endpoint, `ACTIVE`)
-- **KI-Modelle**: `core/openrouter.py` (`openrouter/free` Router, echte Free-Modelle)
-- **Web3**: `core/web3_integration.py` (`True`, `Web3 connected`)
-- **Genesis-Prompt**: `data/genesis.prompt` (KI-Firma, KI-Produktivität, Geldvermehrung)
-- **GitHub**: `autonom-automatum` (Commit: `05e7ec3`)
-- **Budget (interner Gewinn)**: `1048.0` (`Earned`: 687.0)
-- **Wallet-Target**: `153.0`
-- **Echtes ETH Mainnet**: `0.00040736 ETH`
+Die meisten Trading-Bots, die man findet, sind eine von drei Sätzen:
+„ Kauft wenn der MA kreuzt", „100 % Gewinn", „nur ausprobieren".
+
+Dieses Projekt ist das Gegenteil. Es sagt dir vorher, wie teuer ein Trade ist,
+bevor du ihn platzierst — und es lässt dich die Strategie wochenlang auf echten
+Daten laufen, bis du eine Trefferquote **gemessen** statt **behauptet** hast.
 
 ---
 
-## KONTAKT / SUPPORT
+## Funktionsumfang
 
-- Wallet-Adresse für Zahlungen: `0xa441...`
-- Policy-ID: `094ecc98-5d5e-4657-a475-ab8a2aa14181`
-- GitHub: `autonom-automatum`
-- OpenRouter-Key: `sk-or-v1-...` (Free-Modelle aktiv)
-- Alchemy-Key: `alch_...` (Mainnet aktiv)
+### Echte Börsenanbindung (Bybit EU)
+- V5-REST-API mit HMAC-SHA256-Signierung
+- **Automatischer Zeitversatz-Ausgleich** — lokale Uhr gegen Serverzeit
+- Orderbuch, Kerzendaten, Ticker, Kontostand
+- Spot-Market- und Limit-Orders mit Bybit-Handelsregeln (Lot-Größe, Mindestbetrag, Tick-Größe)
+- **Standard ist immer `dry_run=True`** — es wird nichts gesendet, was du nicht ausdrücklich freigibst
 
-Die Firma arbeitet autonom. Keine Simulation. Keine Spielerei. Echte KI. Echte Blockchain. Echtes Geld.
+### Analyse
+- RSI, EMA 9/21, ATR auf echten Kerzendaten
+- Multi-Timeframe-Auswertung (5 min / 15 min / 1 h / 4 h)
+- Ein Signal nur, wenn Zeitebenen **übereinstimmen** — sonst HALTEN
+
+### Paper-Trading
+- Vollständige Simulation mit pessimistischer Ausführung
+  (Kauf immer zum Ask, Verkauf immer zum Bid, plus Slippage und Gebühren)
+- Persistenter Track-Record: Equity-Kurve, Trefferquote, Profit-Faktor, Drawdown, Gebühren
+- **Technisch erzwungener Schutz:** `core/paper_trader.py` enthält keinen Aufruf
+  zu echten Orders — es gibt keinen Code-Pfad dorthin, auch nicht über einen Bug
+
+### Oberfläche (deutsch)
+- Kursdiagramm mit echten Kerzendaten, umschaltbarer Zeitraum
+- Live-Werte, Signal mit Begründung, Risiko-Limits
+- Assistent-Chat auf Deutsch mit Live-Kontext
+
+### Assistent
+- Sprachbedienung über OpenRouter
+- Befehle: `%status%`, `%analyse%`, `%paper%`, `%kosten%`, `%reset%`
+- **Alle Zahlen werden im Code berechnet, nicht vom Modell erfunden.**
+  Das Sprachmodell formuliert, die Fakten stammen aus der Berechnung.
+
+---
+
+## Installation
+
+```bash
+git clone https://github.com/sschknn/autonom-automatum.git
+cd autonom-automatum
+pip install -r requirements.txt
+python trading_gui.py
+```
+
+Python 3.10 oder neuer. Unter Linux zusätzlich `sudo apt install python3-tk`.
+
+---
+
+## API-Keys einrichten
+
+Die Anwendung läuft **ohne Keys** im reinen Beobachtungs- und Dry-Run-Modus.
+Für einen Verbindungstest brauchst du eigene Keys — niemals fremde.
+
+### Bybit EU
+
+> **Wichtig:** Binance ist seit dem 01.07.2026 ohne MiCA-Lizenz für EU-Bürger
+> gesperrt. Verwende eine MiCA-lizenzierte Plattform — Bybit EU, Kraken,
+> Coinbase oder OKX.
+
+1. `bybit.eu` öffnen, **API Management → Create New Key**
+2. Typ: *System-generated* (HMAC)
+3. Berechtigungen:
+
+| Recht | Setting |
+|---|---|
+| Read-Write | ✅ |
+| **Spot → Trade** | ✅ **nur diese eine** |
+| Account Transfer | ⬜ aus |
+| Subaccount Transfer | ⬜ aus |
+| Derivatives | ⬜ aus (nicht lizenziert für EU) |
+
+4. IP-Whitelist setzen (empfohlen)
+5. Key und Secret über den Button **API-KEYS** in der GUI eintragen
+   → landet in `wallet/bybit_keys.json` (steht in `.gitignore`)
+
+### OpenRouter (optional, für den Assistenten)
+
+Key in `wallet/openrouter_key.json` eintragen, Modell `openrouter/free`.
+
+---
+
+## Wichtige Einschränkungen
+
+**Dieses Projekt ist kein Finanzberater.** Es trifft keine Anlageempfehlung.
+Handelsentscheidungen liegen ausschließlich bei dir.
+
+**Der Bot hat bisher keinen nachgewiesenen Edge.** Stand v0.1: 0 Trades,
+0 % Trefferquote gemessen. Die Strategie ist ungetestet. Rechne nicht damit,
+dass sie Gewinn bringt.
+
+**Kleines Kapital macht Trading unwirtschaftlich.** Bei 6,79 USDC kostet ein
+Roundtrip 0,0136 USDC = **0,2 %**. Fünf Trades am Tag bedeuten 1 % Verlust pro
+Tag allein an Gebühren. Für 5 % Gewinn muss der Kurs **5,2 %** laufen.
+
+**Bybit EU führt keine USDT-Paare** (MiCA). Handelbar sind USDC- und
+Fiat-Paare; `ETHUSDC` hat die beste Liquidität.
+
+---
+
+## Konfiguration
+
+In `core/config.py` anpassbar:
+
+```python
+TICK_RATE = 1.5              # Sekunden zwischen Ticks
+MAX_TRADE_QUOTE = 25.0       # Maximale Positionsgröße in USDC
+MIN_RESERVE_QUOTE = 10.0     # Mindestreserve
+MAX_TRADES_PER_HOUR = 5      # Handelsbremse
+```
+
+Risiko-Limits wirken **nur** auf den Exchange-Pfad. Der On-Chain-Pfad hat
+getrennte Limits mit Gas-Reserve.
+
+---
+
+## Projektstruktur
+
+```
+core/
+  bybit_exchange.py    Börsen-API, Signierung, Orders
+  trading_bot.py       Signale, Multi-Timeframe, Ausführung
+  paper_trader.py      Simulation + Track-Record (kein Pfad zu echten Orders)
+  indicators.py        RSI, EMA, ATR
+  risk_manager.py      Positions- und Verlustlimits
+  assistant.py         Deutscher LLM-Assistent mit Befehlen
+  openrouter.py        LLM-Anbindung
+  price_feed.py        EUR-Referenzkurs (Fallback)
+  wallet.py            On-Chain-Wallet mit ECDSA-Prüfung
+  web3_integration.py  On-Chain-Transaktionen
+  protection.py        Zugriffsschutz für Produkte
+modules/worker.py      Erweiterbare Worker
+```
+
+---
+
+## Mitwirken
+
+Issues und Pull Requests willkommen. Besonders interessant:
+neue Strategien (`core/strategies.py`), weitere Indikatoren, weitere Börsen.
+
+## Lizenz
+
+MIT — siehe [LICENSE](LICENSE).
+
+---
+
+*Haftungsausschluss: Diese Software stellt keine Finanzberatung dar. Sie
+simuliert und analysiert lediglich. Der Nutzer ist allein verantwortlich für
+alle Handelsentscheidungen und trägt das volle finanzielle Risiko. Eine Haftung
+für finanzielle Verluste wird ausgeschlossen, soweit gesetzlich zulässig.*
