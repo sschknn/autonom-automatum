@@ -189,7 +189,7 @@ aktiviert hat:
 ```json
 {
   "readOnly": 0,
-  "ips": ["93.206.245.73"],
+  "ips": ["203.0.113.42"],
   "permissions": {
     "Spot": ["SpotTrade"],
     "Derivatives": ["DerivativesTrade"],

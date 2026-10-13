@@ -27,7 +27,9 @@ class RiskManager:
             return False, f"Betrag {amount_eth:.6f} > Limit {self.max_trade_eth:.6f} ETH"
         spendable = balance_eth - self.min_reserve_eth - tx_cost_eth
         if spendable < amount_eth:
-            return False, (f"Nicht genug ETH: verfügbar {spendable:.6f} "
+            # Anzeigewert nie negativ: wer unter der Reserve liegt, hat 0 verfügbar,
+            # nicht "-0,000051 ETH verfügbar".
+            return False, (f"Nicht genug ETH: verfügbar {max(0.0, spendable):.6f} "
                            f"(Balance {balance_eth:.6f} - Reserve {self.min_reserve_eth:.6f} - Gas {tx_cost_eth:.6f})")
         hour_ago = time.time() - 3600
         self.trades = [t for t in self.trades if t["ts"] > hour_ago]

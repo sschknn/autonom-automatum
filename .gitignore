@@ -6,10 +6,13 @@ __pycache__/
 venv/
 
 # Secrets - NIEMALS committen
-wallet/*.json
-wallet/*.png
+# Ganzer Ordner, nicht *.json: ein Backup wie local_wallet.json.bak-alt
+# waere sonst vom Muster NICHT erfasst und landet im Repo.
+wallet/
 *.key
 *.pem
+*.bak
+*.bak-*
 
 # Laufzeitdaten
 data/*.db
