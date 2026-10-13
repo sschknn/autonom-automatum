@@ -52,23 +52,32 @@ class PaperTrader:
         }
 
     def _load(self):
+        """Lade Zustand; bei leerer/beschädigter Datei neu initialisieren."""
+        st = None
         if os.path.isfile(self.state_file):
             try:
                 with open(self.state_file, "r", encoding="utf-8") as f:
                     st = json.load(f)
-                # Startwert konsistent halten, sonst wird der Return absurd
-                st["initial_quote"] = self.initial_quote
-                # Kein Guthaben in Positionen gebunden -> quote muss initial
-                # quote entsprechen. Korrigiert verwaiste Bestaende, die bei
-                # Kapitalaenderungen im Papierkonto stecken bleiben.
-                if float(st.get("base", 0)) == 0.0:
-                    st["quote"] = self.initial_quote
-                    st["peak_equity"] = self.initial_quote
-                self.state = st
             except Exception:
-                pass
-        else:
-            self.state = self._default()
+                self.state = self._default()
+                self.save()
+                _log.warning(f"Zustandsdatei beschädigt/leer ({self.state_file}) -> neu initialisiert")
+                return self.state
+        if not st:
+            st = self._default()
+        # initial_quote konsistent halten (falls Nutzer Kapital geändert hat):
+        st["initial_quote"] = self.initial_quote
+        # Quote nur anpassen, wenn sie eindeutig falsch ist (verwaister/froster
+        # Zustand). Ein legitimer Closed-Position-Wert (quote ~= initial_quote +
+        # realisierter PnL) wird erhalten, damit Gewinne/Verluste nicht verloren
+        # gehen.
+        if float(st.get("base", 0)) == 0.0:
+            expected = float(self.initial_quote) + float(st.get("realized_pnl", 0.0) or 0.0)
+            threshold = max(float(self.initial_quote) * 0.1, 5.0)
+            if abs(float(st.get("quote", 0.0) or 0.0) - expected) > threshold:
+                st["quote"] = self.initial_quote
+                st["peak_equity"] = self.initial_quote
+        self.state = st
         self.save()
         return self.state
 
