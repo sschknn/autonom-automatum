@@ -37,15 +37,20 @@ def show(pt, extra=""):
 
 
 def main():
+    from core.settings import Settings
+
     signal.signal(signal.SIGINT, _stop)
     signal.signal(signal.SIGTERM, _stop)
 
-    if "--reset" in sys.argv:
-        PaperTrader().reset()
-        print("Portfolio zurueckgesetzt.")
-        return
+    from core.settings import Settings
+    s = Settings()
+    pt = PaperTrader(initial_quote=s["initial_quote"], symbol=s["symbol"])
 
-    pt = PaperTrader(initial_quote=6.79)
+    if "--reset" in sys.argv:
+        pt.reset()
+        print(f"Portfolio zurueckgesetzt: {s['symbol']} "
+              f"InitialQuote {s['initial_quote']}")
+        return
 
     if "--report" in sys.argv:
         r = pt.report()

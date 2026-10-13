@@ -57,10 +57,19 @@ class PaperTrader:
                     st = json.load(f)
                 # Startwert konsistent halten, sonst wird der Return absurd
                 st["initial_quote"] = self.initial_quote
-                return st
+                # Kein Guthaben in Positionen gebunden -> quote muss initial
+                # quote entsprechen. Korrigiert verwaiste Bestaende, die bei
+                # Kapitalaenderungen im Papierkonto stecken bleiben.
+                if float(st.get("base", 0)) == 0.0:
+                    st["quote"] = self.initial_quote
+                    st["peak_equity"] = self.initial_quote
+                self.state = st
             except Exception:
                 pass
-        return self._default()
+        else:
+            self.state = self._default()
+        self.save()
+        return self.state
 
     def save(self):
         os.makedirs(os.path.dirname(self.state_file), exist_ok=True)
