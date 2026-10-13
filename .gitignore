@@ -16,7 +16,7 @@ wallet/
 
 # Laufzeitdaten
 data/*.db
-data/paper_portfolio.json
+data/*.json
 logs/
 *.log
 

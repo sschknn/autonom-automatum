@@ -20,7 +20,7 @@ TIMEFRAMES = [("5", "5min"), ("15", "15min"), ("60", "1h"), ("240", "4h")]
 
 
 class CryptoTradingBot:
-    def __init__(self, strategy="BUY_HOLD", symbol="ETHUSDC", host="eu"):
+    def __init__(self, strategy="BUY_HOLD", symbol="ETHUSDC", host="eu", risk=None):
         self.web3_engine = web3_integration.Web3Engine()
         self.wallet_engine = wallet.WalletEngine()
         self.price_feed = PriceFeed()
@@ -29,7 +29,9 @@ class CryptoTradingBot:
         # ETH-Paare: ETHUSDC (beste Liquiditaet) und ETHEUR (Fiat-Quote).
         self.symbol = symbol
         self.eur_symbol = "ETHEUR"
-        self.risk = RiskManager()
+        # risk=None -> eigene Standardwerte. Uebergibt die GUI einen bereits
+        # konfigurierten RiskManager, gelten die vom GUI eingestellten Werte.
+        self.risk = risk if risk is not None else RiskManager()
         self.strategy = strategy
         self.mode = "LIVE_ONLY"
         self.last_decision = None

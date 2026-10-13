@@ -15,6 +15,9 @@ LOG_LEVEL = "INFO"          # DEBUG | INFO | WARNING | ERROR
 # Das Paper-Portfolio ist die einzige persistente Datei des Produkts.
 PAPER_STATE_FILE = os.path.join(BASE_DIR, "data", "paper_portfolio.json")
 
+# Vom GUI verstellbare Einstellungen
+SETTINGS_FILE = os.path.join(BASE_DIR, "data", "settings.json")
+
 # --- Assistent ---
 ASSISTANT_ENABLED = True
 ASSISTANT_MAX_TOKENS = 400

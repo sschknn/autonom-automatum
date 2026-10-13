@@ -30,11 +30,14 @@ Formeln:
   - %analyse%  : technische Analyse ausfuehren und erklaeren
   - %paper%    : Paper-Trading-Report
   - %kosten%   : Gebuehren und Kosten eines Roundtrips berechnen
+  - %settings% : aktive Einstellungen und Risiko-Limits
   - %reset%    : Paper-Portfolio zuruecksetzen
   Wenn mehrere passen, fuehre alle aus und beziehe dich in deiner Antwort darauf.
 
 Regeln:
 - Nutze Zahlen aus dem Live-Kontext, rate nicht.
+- Steht unter "hinweise" eine Warnung, nenne sie ausdruecklich: sie bedeutet,
+  dass mit den aktuellen Einstellungen gar nicht gehandelt werden kann.
 - Erklaerst du Gebuehren und Risiken, sei ehrlich: bei kleinem Kapital sind
   Gebuehren der groesste Kostenposten.
 - Wenn ein Befehl fehlschlaegt, sage das klar.
@@ -101,6 +104,22 @@ class Assistant:
         self.paper.reset()
         return self.paper.report()
 
+    def _cmd_settings(self):
+        from core.settings import Settings
+        s = Settings()
+        w = s.werte
+        return {
+            "symbol": w["symbol"],
+            "startkapital_usdc": w["initial_quote"],
+            "max_trade_usdc": w["max_trade_quote"],
+            "reserve_usdc": w["min_reserve_quote"],
+            "max_trades_pro_stunde": w["max_trades_per_hour"],
+            "aktualisierung_sekunden": w["refresh_ms"] // 1000,
+            "aktive_risiko_limits": self.bot.risk.stats(),
+            "hinweise": s.pruefe(),
+            "datei": "data/settings.json",
+        }
+
     # Zuordnung als METHODENNAME, nicht als Funktionsobjekt - sonst geht
     # das self beim Aufruf verloren ("_cmd_status() missing 1 required
     # positional argument: 'self'").
@@ -110,7 +129,16 @@ class Assistant:
         "paper": "_cmd_paper",
         "kosten": "_cmd_kosten",
         "reset": "_cmd_reset",
+        "settings": "_cmd_settings",
     }
+
+    # Ueber dem Chat: Fragen zu den Einstellungen.
+    EINSTELLUNGSFRAGEN = [
+        "Welche Einstellungen sind gerade aktiv? %settings%",
+        "Passen meine Risiko-Limits zu meinem Kapital? %settings% %kosten%",
+        "Warum wurde kein Trade ausgefuehrt? %analyse% %settings%",
+        "Was kostet ein Roundtrip bei meinem Kapital? %kosten% %paper%",
+    ]
 
     BEISPIELFRAGEN = [
         "Wie teuer ist ein Roundtrip? %kosten%",

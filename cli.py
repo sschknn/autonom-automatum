@@ -40,6 +40,13 @@ def _kopf():
     print("=" * 64)
 
 
+def _warnungen(settings, nachher=True):
+    """Warnungen ausgeben - aber nicht doppelt: cmd_settings() zeigt sie selbst."""
+    if not nachher:
+        for w in settings.warnungen:
+            print(f"  ! {w}")
+
+
 def cmd_status(bot, paper):
     _kopf()
     d = bot.analyze()
@@ -86,6 +93,24 @@ def cmd_paper(paper):
     r = paper.report()
     for k, v in r.items():
         print(f"  {k:<20} {v}")
+
+
+def cmd_settings(bot, settings):
+    _kopf()
+    print(settings.als_text())
+    print()
+    print("  Aktive Risiko-Limits im Bot:")
+    for k, v in bot.risk.stats().items():
+        print(f"    {k:<22} {v}")
+    probleme = settings.pruefe()
+    if probleme:
+        print()
+        print("  Achtung, diese Kombination bewirkt nichts:")
+        for p in probleme:
+            print(f"    - {p}")
+    else:
+        print()
+        print("  Die Kombination ist handelbar.")
 
 
 def cmd_tick(bot, paper):
@@ -135,13 +160,16 @@ def cmd_ask(bot, paper, frage):
 def main():
     p = argparse.ArgumentParser(
         description="autonom-automatum - Trading-Werkzeug fuer Bybit EU")
-    p.add_argument("--symbol", default="ETHUSDC", help="Handelspaar (Standard ETHUSDC)")
-    p.add_argument("--kapital", type=float, default=6.79, help="Startkapital Paper (USDC)")
+    p.add_argument("--symbol", default=None,
+                   help="Handelspaar, ueberschreibt die Einstellungen")
+    p.add_argument("--kapital", type=float, default=None,
+                   help="Startkapital, ueberschreibt die Einstellungen")
     sub = p.add_subparsers(dest="befehl", required=True)
     for name, hilfe in (("status", "Aktueller Zustand"),
                         ("analyse", "Technische Analyse"),
                         ("kosten", "Roundtrip-Kosten"),
                         ("paper", "Paper-Report"),
+                        ("settings", "Aktive Einstellungen"),
                         ("tick", "Ein Paper-Schritt")):
         sub.add_parser(name, help=hilfe)
     d = sub.add_parser("daemon")
@@ -150,8 +178,21 @@ def main():
     a.add_argument("frage", help="Frage an den Assistenten")
 
     args = p.parse_args()
-    bot = CryptoTradingBot(symbol=args.symbol)
-    paper = PaperTrader(symbol=args.symbol, initial_quote=args.kapital)
+
+    # Ohne --symbol/--kapital gelten die gespeicherten Einstellungen aus dem GUI.
+    from core.settings import Settings
+    from core.risk_manager import RiskManager
+    settings = Settings()
+    # 'settings' gibt die Warnungen selbst aus - sonst waeren sie doppelt.
+    _warnungen(settings, nachher=args.befehl != "settings")
+    symbol = args.symbol or settings["symbol"]
+    kapital = args.kapital if args.kapital is not None else settings["initial_quote"]
+
+    risk = RiskManager(max_trade_quote=settings["max_trade_quote"],
+                       min_reserve_quote=settings["min_reserve_quote"],
+                       max_trades_per_hour=settings["max_trades_per_hour"])
+    bot = CryptoTradingBot(symbol=symbol, risk=risk)
+    paper = PaperTrader(symbol=symbol, initial_quote=kapital)
 
     if args.befehl == "status":
         cmd_status(bot, paper)
@@ -161,6 +202,8 @@ def main():
         cmd_kosten(bot, paper)
     elif args.befehl == "paper":
         cmd_paper(paper)
+    elif args.befehl == "settings":
+        cmd_settings(bot, settings)
     elif args.befehl == "tick":
         cmd_tick(bot, paper)
     elif args.befehl == "daemon":

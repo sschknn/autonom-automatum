@@ -16,6 +16,8 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from core.trading_bot import CryptoTradingBot
 from core.paper_trader import PaperTrader
 from core.assistant import Assistant
+from core.settings import Settings, GRENZEN, PAARE, settings_zahl
+from core.risk_manager import RiskManager
 from core import indicators, config
 
 # Farben
@@ -118,8 +120,10 @@ class TradingGUI:
         self.root.geometry("1180x780")
         self.root.configure(bg=BG)
 
-        self.bot = CryptoTradingBot()
-        self.paper = PaperTrader()
+        self.settings = Settings()
+        self.bot = self._bau_bot()
+        self.paper = PaperTrader(symbol=self.settings["symbol"],
+                                 initial_quote=self.settings["initial_quote"])
         self.assistent = Assistant(self.bot, self.paper)
         self.laeuft = True
         self.letzte = None
@@ -127,9 +131,20 @@ class TradingGUI:
         self._chat_warteschlange = queue.Queue()
 
         self._baue()
+        for w in self.settings.warnungen:
+            self._sag(f"Einstellung: {w}")
         self._sag("Anwendung gestartet. Lade Marktdaten von Bybit EU ...")
         self.root.after(300, self._chat_entleeren)
         self._aktualisiere()
+
+    def _bau_bot(self):
+        """Bot mit den aktuell eingestellten Risiko-Limits erzeugen."""
+        risk = RiskManager(
+            max_trade_quote=self.settings["max_trade_quote"],
+            min_reserve_quote=self.settings["min_reserve_quote"],
+            max_trades_per_hour=self.settings["max_trades_per_hour"],
+        )
+        return CryptoTradingBot(symbol=self.settings["symbol"], risk=risk)
 
     # ---------- Aufbau ----------
     def _panel(self, eltern, titel):
@@ -219,24 +234,48 @@ class TradingGUI:
         self.l_guthaben = self._zeile(konto, "ETH im Handelskonto", 1)
         self.l_mini = self._zeile(konto, "Mindestbestellung", 2)
 
+        # ---- Einstellungen ----
+        self._baue_einstellungen(rechts)
+
         # ---- Assistent ----
         assistent = self._panel(rechts, "ASSISTENT (Sprachbedienung, OpenRouter)")
+
+        # Beispiel-Buttons UEBER dem Chat: Fragen zu den Einstellungen.
+        oben = tk.Frame(assistent, bg=PANEL)
+        oben.grid(row=1, column=0, columnspan=3, sticky="w", padx=6, pady=(4, 2))
+        tk.Label(oben, text="EINSTELLUNGEN", bg=PANEL, fg=Grau,
+                 font=("Consolas", 7)).pack(anchor="w", padx=2)
+        zeile1 = tk.Frame(oben, bg=PANEL)
+        zeile1.pack(anchor="w")
+        for q in Assistant.EINSTELLUNGSFRAGEN[:2]:
+            tk.Button(zeile1, text=q.split("%")[0].strip()[:28],
+                      command=lambda x=q: self._frage(x),
+                      bg="#21262d", fg=Violett, font=("Consolas", 7),
+                      activebackground="#30363d", bd=0).pack(side="left", padx=2, pady=1)
+        zeile2 = tk.Frame(oben, bg=PANEL)
+        zeile2.pack(anchor="w")
+        for q in Assistant.EINSTELLUNGSFRAGEN[2:]:
+            tk.Button(zeile2, text=q.split("%")[0].strip()[:28],
+                      command=lambda x=q: self._frage(x),
+                      bg="#21262d", fg=Violett, font=("Consolas", 7),
+                      activebackground="#30363d", bd=0).pack(side="left", padx=2, pady=1)
+
         self.chat_verlauf = tk.Text(assistent, height=9, bg=BG, fg=TEXT,
                                     font=("Consolas", 8), wrap="word",
                                     insertbackground=Gruen)
-        self.chat_verlauf.grid(row=1, column=0, columnspan=3, sticky="nsew",
+        self.chat_verlauf.grid(row=2, column=0, columnspan=3, sticky="nsew",
                                padx=8, pady=4)
-        assistent.rowconfigure(1, weight=1)
+        assistent.rowconfigure(2, weight=1)
         assistent.columnconfigure(2, weight=1)
 
         beispiele = tk.Frame(assistent, bg=PANEL)
-        beispiele.grid(row=2, column=0, columnspan=3, sticky="w", padx=6)
+        beispiele.grid(row=3, column=0, columnspan=3, sticky="w", padx=6)
         for q in Assistant.BEISPIELFRAGEN[:4]:
             tk.Button(beispiele, text=q.split("%")[0].strip()[:26], command=lambda x=q: self._frage(x),
                       bg="#21262d", fg=Blau, font=("Consolas", 7)).pack(side="left", padx=2, pady=2)
 
         eingabe = tk.Frame(assistent, bg=PANEL)
-        eingabe.grid(row=3, column=0, columnspan=3, sticky="ew", padx=8, pady=6)
+        eingabe.grid(row=4, column=0, columnspan=3, sticky="ew", padx=8, pady=6)
         self.frage = tk.StringVar()
         self.eingabe = tk.Entry(eingabe, textvariable=self.frage, bg=BG, fg=TEXT,
                                insertbackground=Gruen, font=("Consolas", 9))
@@ -253,6 +292,124 @@ class TradingGUI:
         self.log = tk.Text(log_rahmen, height=5, bg=BG, fg=Gruen, font=("Consolas", 8))
         self.log.pack(fill=tk.X, padx=4, pady=4)
         self.log.insert(tk.END, "Befehle: %status% %analyse% %paper% %kosten% %reset%\n")
+
+    # ---------- Einstellungen ----------
+    def _baue_einstellungen(self, eltern):
+        """Regler-Panel. Werte werden in data/settings.json gespeichert."""
+        f = self._panel(eltern, "EINSTELLUNGEN")
+        self._regler = {}
+
+        r = 0
+        # Symbol als Auswahl, kein Regler - nur vier Paare sind handelbar
+        tk.Label(f, text="Symbol", bg=PANEL, fg=TEXT,
+                 font=("Consolas", 9)).grid(row=r + 1, column=0, sticky="w", padx=8)
+        self.var_symbol = tk.StringVar(value=self.settings["symbol"])
+        box = ttk.Combobox(f, textvariable=self.var_symbol, values=PAARE,
+                           state="readonly", width=10, font=("Consolas", 9))
+        box.grid(row=r + 1, column=2, sticky="e", padx=8)
+        r += 1
+
+        # Skalen: sinnvolle Schrittweiten statt der rohen Grenzen aus settings.py
+        scalen = {
+            "initial_quote":       (5, 5000, 5),
+            "max_trade_quote":     (5, 1000, 5),
+            "min_reserve_quote":   (0, 1000, 5),
+            "max_trades_per_hour": (1, 20, 1),
+            "refresh_ms":          (2000, 120000, 1000),
+        }
+        beschriftungen = {
+            "initial_quote": "Startkapital (USDC)",
+            "max_trade_quote": "Max. Trade (USDC)",
+            "min_reserve_quote": "Reserve (USDC)",
+            "max_trades_per_hour": "Max. Trades/Stunde",
+            "refresh_ms": "Aktualisierung (Sek.)",
+        }
+        for name, (lo, hi, schritt) in scalen.items():
+            r += 1
+            wert = self.settings[name]
+            tk.Label(f, text=beschriftungen[name], bg=PANEL, fg=TEXT,
+                     font=("Consolas", 9)).grid(row=r, column=0, sticky="w", padx=8)
+            var = tk.DoubleVar(value=wert)
+            anzeige = tk.Label(f, text=self._zahl(wert), bg=PANEL, fg=Gruen,
+                               font=("Consolas", 9, "bold"), width=9, anchor="e")
+            anzeige.grid(row=r, column=2, sticky="e", padx=8)
+            sk = tk.Scale(f, from_=lo, to=hi, resolution=schritt, orient="horizontal",
+                          variable=var, showvalue=False, bg=PANEL, fg=Grau,
+                          troughcolor="#21262d", highlightthickness=0,
+                          activebackground=Blau, length=140,
+                          command=lambda v, n=name, a=anzeige: self._regler_wert(n, v, a))
+            sk.grid(row=r, column=1, sticky="ew", padx=4)
+            self._regler[name] = (var, anzeige)
+
+        r += 1
+        knoepfe = tk.Frame(f, bg=PANEL)
+        knoepfe.grid(row=r, column=0, columnspan=3, pady=6)
+        tk.Button(knoepfe, text="ÜBERNEHMEN", command=self._einstellungen_uebernehmen,
+                  bg=Gruen, fg="#000", font=("Consolas", 9, "bold"),
+                  activebackground="#00cc6e", bd=0).pack(side="left", padx=2)
+        tk.Button(knoepfe, text="STANDARD", command=self._einstellungen_zuruecksetzen,
+                  bg="#21262d", fg=Grau, font=("Consolas", 9),
+                  activebackground="#30363d", bd=0).pack(side="left", padx=2)
+
+        self.l_hinweis = tk.Label(f, text="", bg=PANEL, fg=Gelb,
+                                  font=("Consolas", 7), wraplength=300,
+                                  justify="left")
+        self.l_hinweis.grid(row=r + 1, column=0, columnspan=3, sticky="w",
+                            padx=8, pady=(2, 6))
+        return f
+
+    @staticmethod
+    def _zahl(w):
+        return settings_zahl(w)
+
+    def _regler_wert(self, name, wert, anzeige):
+        """Wird bei jeder Reglerbewegung aufgerufen - nur Anzeige, kein Speichern.
+
+        Gespeichert wird erst bei ÜBERNEHMEN. Sonst würde ein nebenbei
+        versehentlich verschobener Regler die Konfiguration zerstören.
+        """
+        if name == "refresh_ms":
+            anzeige.config(text=f"{int(float(wert)) // 1000} s")
+        else:
+            anzeige.config(text=self._zahl(wert))
+        self._regler_warnung(vorschau=True)
+
+    def _einstellungen_uebernehmen(self):
+        werte = {
+            "symbol": self.var_symbol.get(),
+            **{n: v.get() for n, (v, _) in self._regler.items()},
+        }
+        self.settings.set(**werte)
+        self.bot = self._bau_bot()
+        self.paper.symbol = self.settings["symbol"]
+        self.assistent.bot = self.bot
+        self.assistent.paper = self.paper
+        self.root.after(self.settings["refresh_ms"], self._aktualisiere)
+        self._regler_warnung(vorschau=False)
+        self._sag("Einstellungen übernommen und gespeichert.")
+        self._aktualisiere()
+
+    def _einstellungen_zuruecksetzen(self):
+        from core.settings import standard
+        werte = standard()
+        for name, (var, _) in self._regler.items():
+            var.set(werte[name])
+        self.var_symbol.set(werte["symbol"])
+        self._einstellungen_uebernehmen()
+
+    def _regler_warnung(self, vorschau):
+        """Warnt, bevor etwas gespeichert wird, das gar nichts bewirken kann."""
+        from core.settings import Settings, normalisiere
+        roh = {"symbol": self.var_symbol.get(),
+               **{n: v.get() for n, (v, _) in self._regler.items()}}
+        werte, warnungen = normalisiere(roh)
+        probleme = Settings.__new__(Settings)
+        probleme.werte = werte
+        texte = warnungen + probleme.pruefe()
+        if texte:
+            self.l_hinweis.config(text="\n".join(f"! {t}" for t in texte[:3]), fg=Gelb)
+        else:
+            self.l_hinweis.config(text="", fg=Gelb)
 
     # ---------- Hilfsfunktionen ----------
     def _sag(self, text):
@@ -388,7 +545,7 @@ class TradingGUI:
                                  fg=Grau)
         except Exception as exc:
             self.l_status.config(text=f"Fehler: {exc}", fg=Rot)
-        self.root.after(config.GUI_REFRESH_MS, self._aktualisiere)
+        self.root.after(self.settings["refresh_ms"], self._aktualisiere)
 
 
 if __name__ == "__main__":

@@ -194,11 +194,11 @@ getrennte Limits mit Gas-Reserve.
 > nicht eingegeben. Zum Starten brauchst du `start.bat` oder die Befehle oben.
 
 ```
-cli.py                 Kommandozeile (status, analyse, kosten, paper, daemon, ask)
+cli.py                 Kommandozeile (status, analyse, kosten, paper, settings, daemon, ask)
 trading_gui.py         Grafische Oberfläche (deutsch)
 paper_runner.py        Paper-Daemon für den Dauerbetrieb
 start.bat              Menü für Windows (doppelklicken)
-tests/test_kern.py     30 Tests, ohne Netzwerkzugriff
+tests/test_kern.py     43 Tests, ohne Netzwerkzugriff
 
 core/
   bybit_exchange.py    Börsen-API, Signierung, Orders
@@ -206,7 +206,7 @@ core/
   paper_trader.py      Simulation + Track-Record (kein Pfad zu echten Orders)
   indicators.py        RSI, EMA, ATR
   risk_manager.py      Positions- und Verlustlimits
-  assistant.py         Deutscher LLM-Assistent mit Befehlen
+  settings.py          Verstellbare Einstellungen (Regler im GUI)
   openrouter.py        LLM-Anbindung
   price_feed.py        EUR-Referenzkurs (Fallback)
   wallet.py            On-Chain-Wallet mit ECDSA-Prüfung

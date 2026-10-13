@@ -13,6 +13,7 @@ from core import indicators
 from core.risk_manager import RiskManager
 from core.paper_trader import PaperTrader
 from core.bybit_exchange import BybitExchange
+from core.settings import Settings, normalisiere, standard, settings_zahl
 
 
 # ---------------------------------------------------------------- Indikatoren
@@ -227,6 +228,90 @@ class TestWallet(unittest.TestCase):
             self.assertEqual(len(w.get_private_key_hex()), 64)
         finally:
             wallet_mod.WALLET_FILE = alt
+
+
+# ---------------------------------------------------------------- Einstellungen
+class TestEinstellungen(unittest.TestCase):
+    def setUp(self):
+        import tempfile
+        d = tempfile.mkdtemp()
+        self.pfad = os.path.join(d, "settings.json")
+        self.s = Settings(pfad=self.pfad)
+
+    def test_standardwerte(self):
+        s = standard()
+        self.assertEqual(s["symbol"], "ETHUSDC")
+        self.assertEqual(s["max_trades_per_hour"], 5)
+
+    def test_werte_werden_geklemmt(self):
+        w, warn = normalisiere({"initial_quote": "keine Zahl"})
+        self.assertEqual(w["initial_quote"], standard()["initial_quote"])
+        self.assertTrue(warn)
+
+    def test_below_minimum_wird_angehoben(self):
+        """Bybit verlangt mindestens 5 USDC - darunter kein Trade moeglich."""
+        w, _ = normalisiere({"max_trade_quote": 0.5})
+        self.assertGreaterEqual(w["max_trade_quote"], 5.0)
+
+    def test_kein_usdt_paar(self):
+        w, warn = normalisiere({"symbol": "ETHUSDT"})
+        self.assertEqual(w["symbol"], "ETHUSDC")
+        self.assertTrue(any("USDT" in x for x in warn))
+
+    def test_symbol_wird_kleingeschrieben_akzeptiert(self):
+        w, _ = normalisiere({"symbol": "etheur"})
+        self.assertEqual(w["symbol"], "ETHEUR")
+
+    def test_ganzzahlige_werte_bleiben_ganzzahlig(self):
+        w, _ = normalisiere({"max_trades_per_hour": "7", "refresh_ms": "20000"})
+        self.assertIsInstance(w["max_trades_per_hour"], int)
+        self.assertIsInstance(w["refresh_ms"], int)
+
+    def test_persistenz_ueberlebt_neustart(self):
+        self.s.set(initial_quote=250.0, symbol="ETHEUR")
+        neu = Settings(pfad=self.pfad)
+        self.assertEqual(neu["initial_quote"], 250.0)
+        self.assertEqual(neu["symbol"], "ETHEUR")
+
+    def test_kaputte_datei_erzeugt_keinen_absturz(self):
+        with open(self.pfad, "w", encoding="utf-8") as f:
+            f.write("{ kaputt, kein json")
+        s = Settings(pfad=self.pfad)          # darf nicht werfen
+        self.assertEqual(s["symbol"], "ETHUSDC")
+
+    def test_leere_datei_erzeugt_keinen_absturz(self):
+        open(self.pfad, "w").close()
+        s = Settings(pfad=self.pfad)
+        self.assertEqual(s["max_trades_per_hour"], 5)
+
+    def test_reserve_ueber_kapital_wird_gemeldet(self):
+        self.s.set(initial_quote=10.0, min_reserve_quote=20.0)
+        self.assertTrue(any("nie gehandelt" in x for x in self.s.warnungen))
+        self.assertTrue(self.s.pruefe())
+
+    def test_sinnvolle_kombination_meldet_nichts(self):
+        self.s.set(initial_quote=1000.0, min_reserve_quote=100.0, max_trade_quote=250.0)
+        self.assertEqual(self.s.pruefe(), [])
+
+    def test_zahl_wird_deutsch_formatiert(self):
+        self.assertEqual(settings_zahl(1234.5), "1.234,50")
+        self.assertEqual(settings_zahl(6.79), "6,79")
+
+    def test_regler_wirkung_auf_den_bot(self):
+        """Der Bot muss die eingestellten Limits tatsaechlich benutzen."""
+        from core.trading_bot import CryptoTradingBot
+        s = Settings(pfad=self.pfad)
+        s.set(max_trade_quote=123.0, min_reserve_quote=45.0,
+              max_trades_per_hour=3, symbol="ETHEUR")
+        from core.risk_manager import RiskManager
+        risk = RiskManager(max_trade_quote=s["max_trade_quote"],
+                           min_reserve_quote=s["min_reserve_quote"],
+                           max_trades_per_hour=s["max_trades_per_hour"])
+        bot = CryptoTradingBot(symbol=s["symbol"], risk=risk)
+        self.assertEqual(bot.symbol, "ETHEUR")
+        self.assertEqual(bot.risk.max_trade_quote, 123.0)
+        self.assertEqual(bot.risk.min_reserve_quote, 45.0)
+        self.assertEqual(bot.risk.max_trades_per_hour, 3)
 
 
 if __name__ == "__main__":
