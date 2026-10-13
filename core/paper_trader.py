@@ -26,6 +26,11 @@ SLIPPAGE_PCT = 0.0005    # 0,05% zusaetzlicher Slippage
 MIN_NOTIONAL = 5.0       # Bybit-Mindestbetrag
 DEFAULT_QUOTE = 6.79     # Startkapital: entspricht dem echten ETH-Wert (0,00279 ETH)
 
+# ---------- Position-Management (verschärft) ----------
+STOP_LOSS_PCT   = 1.5    # Position bei -1,5% Verlust vom Einstand geschlossen
+TAKE_PROFIT_PCT = 2.0    # Position bei +2,0% Gewinn vom Einstand geschlossen
+TRAIL_PCT       = 1.0    # Trailing-Stop: 1,0% unter dem Kurs-Hoch der Position
+
 
 class PaperTrader:
     def __init__(self, symbol="ETHUSDC", initial_quote=DEFAULT_QUOTE, state_file=STATE_FILE, min_confidence=0.35):
@@ -49,6 +54,7 @@ class PaperTrader:
             "equity_curve": [],               # (ts, equity)
             "started": time.strftime("%Y-%m-%d %H:%M:%S"),
             "peak_equity": self.initial_quote,
+            "position_peak": self.initial_quote,  # Kurs-Hoch der offenen Position
         }
 
     def _load(self):
@@ -176,11 +182,11 @@ class PaperTrader:
 
     # ---------- Ein Tick ----------
     def tick(self, min_confidence=0.22):
-        """Holt Signal, fuehrt ggf. aus, protokolliert immer.
+        """Holt Signal, verwaltet Position (SL/TP/Trailing), eroeffnet/schliesst.
 
-        TEST-KONFIGURATION: min_confidence=0.22 statt 0.5, damit Signale
-        ausgefuehrt werden. In PRODUKTION auf 0.5 zuruecksetzen. Die
-        Strategie benoetigt mindestens score=0.2 fuer BUY/SELL.
+        TEST-KONFIGURATION: min_confidence=0.22 statt 0.5. In PRODUKTION auf 0.5
+        zuruecksetzen. Positionen werden nun durch Stop-Loss, Take-Profit und
+        Trailing-Stop verwaltet.
         """
         snap = self.exchange.market_snapshot(self.symbol)
         if not snap.get("last"):
@@ -190,21 +196,14 @@ class PaperTrader:
         s15 = indicators.analyze(self.exchange.klines(self.symbol, "15", limit=100))
         px = snap["last"]
 
-        action, conf, reason = "HOLD", 0.0, ""
-        # TEST: Signal reicht, wenn beide Fenster einig sind ODER wenn das
-        # 15m-Fenster ein klares Signal gibt (>=0.65). Beide Bedingungen
-        # muessen in PRODUKTION gelten.
-        agree = s1h["action"] == s15["action"]
-        strong_15 = s15["confidence"] >= min_confidence
-        if (agree and s1h["action"] in ("BUY", "SELL")) or strong_15:
-            if agree:
-                action = s1h["action"]
-                conf = (s1h["confidence"] + s15["confidence"]) / 2
-                reason = "1h+15m einig: " + s1h["reason"][:70]
-            else:
-                action = s15["action"]
-                conf = s15["confidence"]
-                reason = "15m klar: " + s15["reason"][:70]
+        # 1) Offene Position verwalten (Stop-Loss / Take-Profit / Trailing)
+        closed = self._manage_position(px)
+
+        # 2) Neues Signal nur, wenn Position nicht gerade verwaltet wurde
+        if not closed:
+            action, conf, reason = self._signal(s1h, s15, min_confidence)
+        else:
+            action, conf, reason = "HOLD", 0.0, "Position verwaltet"
 
         rec = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "price": px,
                "action": action, "confidence": round(conf, 2), "reason": reason}
@@ -223,6 +222,74 @@ class PaperTrader:
         return {"signal": rec, "result": result,
                 "equity": round(self.equity(), 4),
                 "drawdown_pct": round(self.drawdown(), 3)}
+
+    # ---------- Position-Management ----------
+    def _manage_position(self, px):
+        """Stop-Loss / Take-Profit / Trailing-Stop. Gibt True, wenn Position
+        geschlossen wurde."""
+        if self.state["base"] <= 0:
+            return False
+        entry = self.state["entry_price"]
+        if not entry:
+            return False
+
+        pos_pct = (px - entry) / entry * 100
+        peak = self.state.get("position_peak") or entry
+
+        # Take-Profit (vom Einstand)
+        if pos_pct >= TAKE_PROFIT_PCT:
+            self.open_position("Sell")
+            _log.info(f"Take-Profit: Position +{pos_pct:.2f}% -> geschlossen")
+            return True
+        # Stop-Loss (vom Einstand)
+        if pos_pct <= -STOP_LOSS_PCT:
+            self.open_position("Sell")
+            _log.info(f"Stop-Loss: Position {pos_pct:.2f}% -> geschlossen")
+            return True
+        # Trailing-Stop (vom Kurs-Hoch)
+        if px > peak:
+            peak = px
+        if px <= peak * (1 - TRAIL_PCT / 100):
+            self.open_position("Sell")
+            _log.info(f"Trailing-Stop: Peak {peak:.2f} -> Position geschlossen")
+            return True
+
+        self.state["position_peak"] = peak
+        return False
+
+    # ---------- Signal-Auswertung ----------
+    def _signal(self, s1h, s15, min_confidence):
+        """Signal zusammenfuegen mit Trend- und RSI-Filter.
+
+        - Kein Long, wenn 1h im Abwaertstrend ist (EMA9 < EMA21).
+        - Kein Long, wenn 15m RSI > 60 (ueberkauft).
+        - 1h und 15m muessen einig sein ODER das 15m-Fenster muss klar signalisieren.
+        """
+        action, conf, reason = "HOLD", 0.0, ""
+        agree = s1h["action"] == s15["action"]
+        strong_15 = s15["confidence"] >= min_confidence
+
+        if (agree and s1h["action"] in ("BUY", "SELL")) or strong_15:
+            if agree:
+                action = s1h["action"]
+                conf = (s1h["confidence"] + s15["confidence"]) / 2
+                reason = "1h+15m einig: " + s1h["reason"][:70]
+            else:
+                action = s15["action"]
+                conf = s15["confidence"]
+                reason = "15m klar: " + s15["reason"][:70]
+
+            rsi = s15.get("rsi")
+            if action == "BUY":
+                if s1h["action"] == "SELL":
+                    action, conf, reason = "HOLD", 0.0, "1h im Abwaertstrend -> kein Long"
+                elif rsi is not None and rsi > 60:
+                    action, conf, reason = "HOLD", 0.0, "RSI %.1f zu ueberkauft" % rsi
+            if action == "SELL":
+                if rsi is not None and rsi < 40:
+                    action, conf, reason = "HOLD", 0.0, "RSI %.1f zu ueberverkauft" % rsi
+
+        return action, conf, reason
 
     # ---------- Report ----------
     def report(self):
