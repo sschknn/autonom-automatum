@@ -117,8 +117,16 @@ class TradingGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("autonom-automatum — Trading-Oberfläche")
-        self.root.geometry("1180x780")
+        # Hoehe aus der Bildschirmhoehe ableiten, damit auf kleinen
+        # Bildschirmen nichts abgeschnitten wird. 780px reichten bei 1080px
+        # Bildschirm, auf einem 768px-Laptop aber nicht.
+        bildschirm = self.root.winfo_screenheight()
+        hoehe = max(700, min(820, bildschirm - 220))
+        self.root.geometry(f"1180x{hoehe}")
+        self.root.minsize(1000, 700)
         self.root.configure(bg=BG)
+        # Saubere Beendigung: die beiden periodischen Zeitgeber abbrechen.
+        self.root.protocol("WM_DELETE_WINDOW", self._schliessen)
 
         self.settings = Settings()
         self.bot = self._bau_bot()
@@ -147,13 +155,28 @@ class TradingGUI:
         return CryptoTradingBot(symbol=self.settings["symbol"], risk=risk)
 
     # ---------- Aufbau ----------
-    def _panel(self, eltern, titel):
+    def _panel(self, eltern, titel, klappbar=False):
         f = tk.Frame(eltern, bg=PANEL, bd=1, relief=tk.RIDGE)
-        f.pack(fill=tk.BOTH, expand=True, padx=5, pady=3)
-        tk.Label(f, text=titel, bg=PANEL, fg=Grau,
-                 font=("Consolas", 9, "bold")).grid(row=0, column=0, columnspan=3,
-                                                   sticky="w", padx=8, pady=(6, 2))
+        f.pack(fill=tk.BOTH, expand=True, padx=5, pady=2)
         f.columnconfigure(1, weight=1)
+        f._pfeil = None
+        f._offen = False
+        if klappbar:
+            pfeil = tk.Button(f, text="\u25b6",
+                              command=lambda: self._klapp_umschalten(f._inhalt),
+                              bg=PANEL, fg=Grau, font=("Consolas", 8), bd=0,
+                              width=2, activebackground=PANEL)
+            pfeil.grid(row=0, column=0, sticky="w", padx=(4, 0))
+            tk.Label(f, text=titel, bg=PANEL, fg=Grau,
+                     font=("Consolas", 9, "bold")).grid(
+                         row=0, column=1, columnspan=2, sticky="w",
+                         padx=2, pady=(6, 2))
+            f._pfeil = pfeil
+        else:
+            tk.Label(f, text=titel, bg=PANEL, fg=Grau,
+                     font=("Consolas", 9, "bold")).grid(
+                         row=0, column=0, columnspan=3,
+                         sticky="w", padx=8, pady=(6, 2))
         return f
 
     def _zeile(self, eltern, beschriftung, r, standard="-"):
@@ -173,11 +196,16 @@ class TradingGUI:
 
         mitte = tk.Frame(self.root, bg=BG)
         mitte.pack(fill=tk.BOTH, expand=True, padx=5, pady=4)
+        # Feste Obergrenze: die Inhaltsflaeche darf sich nicht ueber den
+        # verbleibenden Platz hinaus ausdehnen und das Protokoll verdraengen.
+        mitte.pack_propagate(False)
+        self._mitte = mitte
 
         links = tk.Frame(mitte, bg=BG)
         links.pack(side="left", fill=tk.BOTH, expand=True)
         rechts = tk.Frame(mitte, bg=BG)
         rechts.pack(side="left", fill=tk.BOTH, expand=True)
+        self._rechts = rechts
 
         # ---- Chart ----
         chart_rahmen = tk.Frame(links, bg=PANEL, bd=1, relief=tk.RIDGE)
@@ -224,25 +252,34 @@ class TradingGUI:
         self.btn_tick.grid(row=7, column=0, columnspan=2, pady=6)
 
         # ---- Risiko + Konto ----
-        risiko = self._panel(rechts, "RISIKO-LIMITS")
+        # Beide Panels sind reine Anzeige, nichts davon wird oft gebraucht.
+        # Deshalb sind sie einklappbar: sonst nimmt die rechte Spalte mehr
+        # Platz in Anspruch als das Fenster hergibt, und zuletzt leidet
+        # der Assistent oder das Protokoll.
+        risiko = self._klapppanel(rechts, "RISIKO-LIMITS")
         self.l_maxtrade = self._zeile(risiko, "Max. Trade", 0)
         self.l_reserve = self._zeile(risiko, "Reserve", 1)
         self.l_stunde = self._zeile(risiko, "Trades pro Stunde", 2)
+        self._klapp_zu(risiko)
 
-        konto = self._panel(rechts, "BYBIT-KONTO")
+        konto = self._klapppanel(rechts, "BYBIT-KONTO")
         self.l_konto = self._zeile(konto, "Keys hinterlegt", 0)
         self.l_guthaben = self._zeile(konto, "ETH im Handelskonto", 1)
         self.l_mini = self._zeile(konto, "Mindestbestellung", 2)
+        self._klapp_zu(konto)
 
         # ---- Einstellungen ----
         self._baue_einstellungen(rechts)
 
         # ---- Assistent ----
-        assistent = self._panel(rechts, "ASSISTENT (Sprachbedienung, OpenRouter)")
+        # Klappbar: Einstellungen und Assistent passen auf einem 1080px-
+        # Bildschirm nicht beide offen. Der Assistent ist startklar
+        # sichtbar, die Einstellungen muss man aufklappen.
+        assistent = self._klapppanel(rechts, "ASSISTENT (Sprachbedienung, OpenRouter)")
 
         # Beispiel-Buttons UEBER dem Chat: Fragen zu den Einstellungen.
         oben = tk.Frame(assistent, bg=PANEL)
-        oben.grid(row=1, column=0, columnspan=3, sticky="w", padx=6, pady=(4, 2))
+        oben.grid(row=1, column=0, columnspan=3, sticky="w", padx=6, pady=(2, 0))
         tk.Label(oben, text="EINSTELLUNGEN", bg=PANEL, fg=Grau,
                  font=("Consolas", 7)).pack(anchor="w", padx=2)
         zeile1 = tk.Frame(oben, bg=PANEL)
@@ -251,21 +288,23 @@ class TradingGUI:
             tk.Button(zeile1, text=q.split("%")[0].strip()[:28],
                       command=lambda x=q: self._frage(x),
                       bg="#21262d", fg=Violett, font=("Consolas", 7),
-                      activebackground="#30363d", bd=0).pack(side="left", padx=2, pady=1)
+                      activebackground="#30363d", bd=0).pack(side="left", padx=2)
         zeile2 = tk.Frame(oben, bg=PANEL)
         zeile2.pack(anchor="w")
         for q in Assistant.EINSTELLUNGSFRAGEN[2:]:
             tk.Button(zeile2, text=q.split("%")[0].strip()[:28],
                       command=lambda x=q: self._frage(x),
                       bg="#21262d", fg=Violett, font=("Consolas", 7),
-                      activebackground="#30363d", bd=0).pack(side="left", padx=2, pady=1)
+                      activebackground="#30363d", bd=0).pack(side="left", padx=2)
 
-        self.chat_verlauf = tk.Text(assistent, height=9, bg=BG, fg=TEXT,
+        self.chat_verlauf = tk.Text(assistent, height=6, bg=BG, fg=TEXT,
                                     font=("Consolas", 8), wrap="word",
                                     insertbackground=Gruen)
+        # fill=BOTH ohne expand: der Chat waechst mit, gibt aber bei
+        # Platzmangel zuerst nach. Mit expand=True wuerde er die anderen
+        # Panels aus dem Fenster druecken.
         self.chat_verlauf.grid(row=2, column=0, columnspan=3, sticky="nsew",
                                padx=8, pady=4)
-        assistent.rowconfigure(2, weight=1)
         assistent.columnconfigure(2, weight=1)
 
         beispiele = tk.Frame(assistent, bg=PANEL)
@@ -284,29 +323,84 @@ class TradingGUI:
         tk.Button(eingabe, text="FRAGEN", command=self._frage_stellen, bg=Gruen,
                   fg="#000", font=("Consolas", 9, "bold")).pack(side="left", padx=4)
 
+        # Assistent startklar offen, Einstellungen starten zu.
+        self._assistent_inhalt = assistent
+        self._klapp_zu(assistent, offen=True)
+
         # ---- Protokoll ----
+        # Wird VOR der Inhaltsflaeche gepackt und nur mit fill=tk.X, ohne
+        # expand. Gepackt wird von oben nach unten: was zuerst kommt, wird
+        # zuerst gesetzt. Das Protokoll stand vorher hinten und bekam bei
+        # Platzmangel nur noch 1 Pixel - siehe _hoehe_anpassen().
         log_rahmen = tk.Frame(self.root, bg=PANEL, bd=1, relief=tk.RIDGE)
-        log_rahmen.pack(fill=tk.X, padx=5, pady=3)
+        log_rahmen.pack(side=tk.BOTTOM, fill=tk.X, padx=5, pady=3)
         tk.Label(log_rahmen, text="PROTOKOLL", bg=PANEL, fg=Grau,
                  font=("Consolas", 8, "bold")).pack(anchor="w", padx=8, pady=(4, 0))
         self.log = tk.Text(log_rahmen, height=5, bg=BG, fg=Gruen, font=("Consolas", 8))
         self.log.pack(fill=tk.X, padx=4, pady=4)
-        self.log.insert(tk.END, "Befehle: %status% %analyse% %paper% %kosten% %reset%\n")
+        self.log.insert(tk.END, "Befehle: %status% %analyse% %paper% %kosten% "
+                                "%settings% %reset%\n")
+
+    def _klapppanel(self, eltern, titel):
+        """Panel mit aufklappbarem Inhalt. Liefert den Inhaltsrahmen."""
+        f = self._panel(eltern, titel, klappbar=True)
+        inhalt = tk.Frame(f, bg=PANEL)
+        f._inhalt = inhalt
+        return inhalt
+
+    def _klapp_zu(self, inhalt, offen=False):
+        """Inhalt ein- oder ausklappen und den Titel mit dem Zustand versehen."""
+        panel = inhalt.master
+        if offen:
+            inhalt.grid(row=1, column=0, columnspan=3, sticky="ew")
+            panel._pfeil.config(text="\u25bc")
+        else:
+            inhalt.grid_forget()
+            panel._pfeil.config(text="\u25b6")
+        panel._offen = offen
+
+    def _klapp_umschalten(self, inhalt):
+        """Klappt um. Beim Oeffnen der Einstellungen weicht der Assistent."""
+        neu = not inhalt.master._offen
+        self._klapp_zu(inhalt, offen=neu)
+        if neu and inhalt is self._assistent_inhalt:
+            # Assistent auf -> Einstellungen zu
+            self._einstellungen_offen = False
+            self._regler_bereich.grid_forget()
+            self._knopf_ein.config(text="\u25b6")
 
     # ---------- Einstellungen ----------
     def _baue_einstellungen(self, eltern):
-        """Regler-Panel. Werte werden in data/settings.json gespeichert."""
+        """Regler-Panel. Werte werden in data/settings.json gespeichert.
+
+        Der Inhalt ist einklappbar und startet zugeklappt. Ausgeklappt
+        braucht er rund 200 px, die auf einem 1080px-Bildschirm sonst
+        woanders fehlen - zuletzt zulasten des Protokolls.
+        """
         f = self._panel(eltern, "EINSTELLUNGEN")
         self._regler = {}
 
+        kopf = tk.Frame(f, bg=PANEL)
+        kopf.grid(row=1, column=0, columnspan=3, sticky="ew")
+        tk.Button(kopf, text="\u25b6", command=self._einstellungen_umschalten,
+                  bg=PANEL, fg=Gruen, font=("Consolas", 8), bd=0,
+                  width=3, activebackground=PANEL).pack(side="left")
+        self.l_status_settings = tk.Label(
+            kopf, text=self._einstellungen_kurz(), bg=PANEL, fg=Gruen,
+            font=("Consolas", 8))
+        self.l_status_settings.pack(side="left", padx=4)
+
+        self._regler_bereich = tk.Frame(f, bg=PANEL)
+
         r = 0
         # Symbol als Auswahl, kein Regler - nur vier Paare sind handelbar
-        tk.Label(f, text="Symbol", bg=PANEL, fg=TEXT,
-                 font=("Consolas", 9)).grid(row=r + 1, column=0, sticky="w", padx=8)
+        tk.Label(self._regler_bereich, text="Symbol", bg=PANEL, fg=TEXT,
+                 font=("Consolas", 9)).grid(row=r, column=0, sticky="w", padx=8, pady=2)
         self.var_symbol = tk.StringVar(value=self.settings["symbol"])
-        box = ttk.Combobox(f, textvariable=self.var_symbol, values=PAARE,
-                           state="readonly", width=10, font=("Consolas", 9))
-        box.grid(row=r + 1, column=2, sticky="e", padx=8)
+        box = ttk.Combobox(self._regler_bereich, textvariable=self.var_symbol,
+                           values=PAARE, state="readonly", width=10,
+                           font=("Consolas", 9))
+        box.grid(row=r, column=2, sticky="e", padx=8, pady=2)
         r += 1
 
         # Skalen: sinnvolle Schrittweiten statt der rohen Grenzen aus settings.py
@@ -327,22 +421,22 @@ class TradingGUI:
         for name, (lo, hi, schritt) in scalen.items():
             r += 1
             wert = self.settings[name]
-            tk.Label(f, text=beschriftungen[name], bg=PANEL, fg=TEXT,
+            tk.Label(self._regler_bereich, text=beschriftungen[name], bg=PANEL, fg=TEXT,
                      font=("Consolas", 9)).grid(row=r, column=0, sticky="w", padx=8)
             var = tk.DoubleVar(value=wert)
-            anzeige = tk.Label(f, text=self._zahl(wert), bg=PANEL, fg=Gruen,
+            anzeige = tk.Label(self._regler_bereich, text=self._zahl(wert), bg=PANEL, fg=Gruen,
                                font=("Consolas", 9, "bold"), width=9, anchor="e")
             anzeige.grid(row=r, column=2, sticky="e", padx=8)
-            sk = tk.Scale(f, from_=lo, to=hi, resolution=schritt, orient="horizontal",
-                          variable=var, showvalue=False, bg=PANEL, fg=Grau,
-                          troughcolor="#21262d", highlightthickness=0,
-                          activebackground=Blau, length=140,
+            sk = tk.Scale(self._regler_bereich, from_=lo, to=hi, resolution=schritt,
+                          orient="horizontal", variable=var, showvalue=False,
+                          bg=PANEL, fg=Grau, troughcolor="#21262d",
+                          highlightthickness=0, activebackground=Blau, length=140,
                           command=lambda v, n=name, a=anzeige: self._regler_wert(n, v, a))
             sk.grid(row=r, column=1, sticky="ew", padx=4)
             self._regler[name] = (var, anzeige)
 
         r += 1
-        knoepfe = tk.Frame(f, bg=PANEL)
+        knoepfe = tk.Frame(self._regler_bereich, bg=PANEL)
         knoepfe.grid(row=r, column=0, columnspan=3, pady=6)
         tk.Button(knoepfe, text="ÜBERNEHMEN", command=self._einstellungen_uebernehmen,
                   bg=Gruen, fg="#000", font=("Consolas", 9, "bold"),
@@ -351,12 +445,34 @@ class TradingGUI:
                   bg="#21262d", fg=Grau, font=("Consolas", 9),
                   activebackground="#30363d", bd=0).pack(side="left", padx=2)
 
-        self.l_hinweis = tk.Label(f, text="", bg=PANEL, fg=Gelb,
+        self.l_hinweis = tk.Label(self._regler_bereich, text="", bg=PANEL, fg=Gelb,
                                   font=("Consolas", 7), wraplength=300,
                                   justify="left")
         self.l_hinweis.grid(row=r + 1, column=0, columnspan=3, sticky="w",
                             padx=8, pady=(2, 6))
+
+        self._einstellungen_offen = False
+        self._knopf_ein = kopf.winfo_children()[0]
         return f
+
+    def _einstellungen_kurz(self):
+        w = self.settings
+        return (f"{w['symbol']} | Kapital {self._zahl(w['initial_quote'])} | "
+                f"Max {self._zahl(w['max_trade_quote'])} | "
+                f"Reserve {self._zahl(w['min_reserve_quote'])}")
+
+    def _einstellungen_umschalten(self):
+        self._einstellungen_offen = not self._einstellungen_offen
+        if self._einstellungen_offen:
+            self._regler_bereich.grid(row=1, column=0, columnspan=3, sticky="ew")
+            self._knopf_ein.config(text="\u25bc")
+            # Beides offen passt nicht in ein 1080px-Fenster. Der
+            # Assistent weicht und gibt seinen Platz ab.
+            self._klapp_zu(self._assistent_inhalt, offen=False)
+        else:
+            self._regler_bereich.grid_forget()
+            self._knopf_ein.config(text="\u25b6")
+            self._klapp_zu(self._assistent_inhalt, offen=True)
 
     @staticmethod
     def _zahl(w):
@@ -385,6 +501,7 @@ class TradingGUI:
         self.assistent.bot = self.bot
         self.assistent.paper = self.paper
         self.root.after(self.settings["refresh_ms"], self._aktualisiere)
+        self.l_status_settings.config(text=self._einstellungen_kurz())
         self._regler_warnung(vorschau=False)
         self._sag("Einstellungen übernommen und gespeichert.")
         self._aktualisiere()
@@ -447,6 +564,8 @@ class TradingGUI:
         threading.Thread(target=arbeite, daemon=True).start()
 
     def _chat_entleeren(self):
+        if not self.laeuft:
+            return
         while True:
             try:
                 art, inhalt = self._chat_warteschlange.get_nowait()
@@ -482,6 +601,15 @@ class TradingGUI:
             self._sag(f"Diagramm: {exc}")
 
     # ---------- Aktualisierung ----------
+    def _schliessen(self):
+        """Auf Klick des Fenster-Schließknopfes: Zeitgeber stoppen, GUI schließen.
+
+        Sonst laufen die periodischen root.after()-Aufrufe weiter und werfen
+        'invalid command name ..._chat_entleeren' im Hintergrund.
+        """
+        self.laeuft = False
+        self.root.destroy()
+
     def _aktualisiere_bilanz(self):
         r = self.paper.report()
         self.l_equity.config(text=f"{r['equity']:.4f} USDC")
