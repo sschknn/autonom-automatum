@@ -66,10 +66,32 @@ Daten laufen, bis du eine Trefferquote **gemessen** statt **behauptet** hast.
 git clone https://github.com/sschknn/autonom-automatum.git
 cd autonom-automatum
 pip install -r requirements.txt
+```
+
+**Grafische Oberfläche:**
+```bash
 python trading_gui.py
 ```
 
+**Kommandozeile:**
+```bash
+python cli.py status        # Zustand
+python cli.py analyse       # technische Analyse
+python cli.py kosten        # Roundtrip-Kosten
+python cli.py paper         # Track-Record
+python cli.py tick          # ein Paper-Schritt
+python cli.py daemon        # Dauerlauf
+python cli.py ask "Wie teuer ist ein Roundtrip? %kosten%"
+```
+
 Python 3.10 oder neuer. Unter Linux zusätzlich `sudo apt install python3-tk`.
+
+**Tests:**
+```bash
+python tests/test_kern.py
+```
+
+30 Tests ohne Netzwerkzugriff.
 
 ---
 
@@ -143,6 +165,11 @@ getrennte Limits mit Gas-Reserve.
 ## Projektstruktur
 
 ```
+cli.py                 Kommandozeile (status, analyse, kosten, paper, daemon, ask)
+trading_gui.py         Grafische Oberfläche (deutsch)
+paper_runner.py        Paper-Daemon für den Dauerbetrieb
+tests/test_kern.py     30 Tests, ohne Netzwerkzugriff
+
 core/
   bybit_exchange.py    Börsen-API, Signierung, Orders
   trading_bot.py       Signale, Multi-Timeframe, Ausführung
@@ -154,9 +181,15 @@ core/
   price_feed.py        EUR-Referenzkurs (Fallback)
   wallet.py            On-Chain-Wallet mit ECDSA-Prüfung
   web3_integration.py  On-Chain-Transaktionen
-  protection.py        Zugriffsschutz für Produkte
-modules/worker.py      Erweiterbare Worker
+  logger.py            Logging (Datei + Konsole)
+  config.py            Konfiguration (alle Werte werden gelesen)
+  strategies.py        Strategien
 ```
+
+**Entfernt in v0.1:** Ein früherer Aufbau enthielt einen „Autonome KI-Firma“-Daemon
+mit virtueller Bilanz, Datei-Verkauf und Marketing-Automation. Der Code erzeugte
+Hash-Zeilen statt verwertbarer Produkte und wurde ersetzt, weil sich daraus kein
+echtes Produkt ergab.
 
 ---
 

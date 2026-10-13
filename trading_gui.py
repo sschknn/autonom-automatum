@@ -16,7 +16,7 @@ os.chdir(os.path.dirname(os.path.abspath(__file__)))
 from core.trading_bot import CryptoTradingBot
 from core.paper_trader import PaperTrader
 from core.assistant import Assistant
-from core import indicators
+from core import indicators, config
 
 # Farben
 BG = "#0d1117"
@@ -388,7 +388,7 @@ class TradingGUI:
                                  fg=Grau)
         except Exception as exc:
             self.l_status.config(text=f"Fehler: {exc}", fg=Rot)
-        self.root.after(15000, self._aktualisiere)
+        self.root.after(config.GUI_REFRESH_MS, self._aktualisiere)
 
 
 if __name__ == "__main__":

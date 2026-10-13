@@ -28,13 +28,16 @@ class OpenRouterEngine:
         verfuegbares Modell. Einzelne Modell-IDs sind unzuverlaessig (404/402)."""
         return ["openrouter/free"]
 
-    def chat(self, messages, max_tokens=400):
+    def chat(self, messages, max_tokens=None):
         """Echter Chat-Call an OpenRouter. Gibt immer Text zurueck.
 
         Wichtig: Auch bei Fehlern wird ein lesbarer Text geliefert, damit die
         GUI nie haengen bleibt. Der Aufrufer bekommt keine None.
         """
-        if not self.is_active():
+        from core import config
+        if max_tokens is None:
+            max_tokens = config.ASSISTANT_MAX_TOKENS
+        if not config.ASSISTANT_ENABLED or not self.is_active():
             return ("[OpenRouter inaktiv] Kein gueltiger Key in "
                     "wallet/openrouter_key.json gefunden.")
         payload = {

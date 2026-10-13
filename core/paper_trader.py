@@ -17,9 +17,9 @@ from core import config, logger
 from core.bybit_exchange import BybitExchange
 from core import indicators
 
-_log = logger.DualLogger()
+_log = logger.Log()
 
-STATE_FILE = os.path.join(config.BASE_DIR, "data", "paper_portfolio.json")
+STATE_FILE = config.PAPER_STATE_FILE
 
 TAKER_FEE = 0.001        # 0,1% pro Seite
 SLIPPAGE_PCT = 0.0005    # 0,05% zusaetzlicher Slippage

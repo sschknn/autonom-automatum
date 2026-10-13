@@ -231,14 +231,19 @@ class BybitExchange:
         except Exception:
             return value
 
+    @staticmethod
+    def _normalisiere(side):
+        """Bybit V5 verlangt 'Buy'/'Sell' in CamelCase, nicht 'BUY'."""
+        s = str(side).strip()
+        return {"BUY": "Buy", "SELL": "Sell", "buy": "Buy", "sell": "Sell"}.get(s, s)
+
     def place_order(self, symbol, side, qty, order_type="Market", price=None,
                     time_in_force="GTC", dry_run=True):
         """Setzt eine echte Spot-Order. dry_run=True simuliert nur.
 
         Bybit V5 verlangt side als 'Buy'/'Sell' in CamelCase, nicht 'BUY'.
         """
-        side = {"BUY": "Buy", "SELL": "Sell", "buy": "Buy", "sell": "Sell"}.get(
-            str(side).strip(), str(side).strip())
+        side = self._normalisiere(side)
         if side not in ("Buy", "Sell"):
             return {"retCode": -1, "retMsg": f"Ungueltige side '{side}'. Erlaubt: Buy, Sell."}
 

@@ -1,15 +1,27 @@
-# Sensible Daten - nicht pushen
-wallet/local_wallet.json
-wallet/api_keys.json
-wallet/openrouter_key.json
-wallet/wallet_policy.json
-wallet/wallet_qr.png
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Secrets - NIEMALS committen
 wallet/*.json
 wallet/*.png
-core/__pycache__/
+*.key
+*.pem
+
+# Laufzeitdaten
+data/*.db
+data/paper_portfolio.json
+logs/
 *.log
-data/autonom_core.db
 
 # Ausgabeordner: Hash-Ausgaben sind keine Produkte
 outbox/
+inbox/
 
+# Werkzeuge
+.pytest_cache/
+.vscode/
+.idea/
