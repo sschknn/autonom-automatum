@@ -68,6 +68,20 @@ cd autonom-automatum
 pip install -r requirements.txt
 ```
 
+### Am einfachsten: `start.bat`
+
+Unter Windows genügt ein Doppelklick auf **`start.bat`**. Das Menü fragt ab,
+was du willst, und prüft vorher, ob Python überhaupt installiert ist:
+
+```
+  [1] Grafische Oberfläche   [2] Status   [3] Tests   [4] Beenden:
+```
+
+### Oder einzeln in der Kommandozeile
+
+Jeder Befehl unten ist **komplett** so einzutippen, inklusive `python`.
+Ohne `python` erkennt Windows die `.py`-Datei nicht.
+
 **Grafische Oberfläche:**
 ```bash
 python trading_gui.py
@@ -83,6 +97,9 @@ python cli.py tick          # ein Paper-Schritt
 python cli.py daemon        # Dauerlauf
 python cli.py ask "Wie teuer ist ein Roundtrip? %kosten%"
 ```
+
+> `cli.py` ohne Unterbefehl zeigt nur die Hilfe. Er braucht immer eines der
+> Wörter `status`, `analyse`, `kosten`, `paper`, `tick`, `daemon` oder `ask`.
 
 Python 3.10 oder neuer. Unter Linux zusätzlich `sudo apt install python3-tk`.
 
@@ -121,6 +138,15 @@ Für einen Verbindungstest brauchst du eigene Keys — niemals fremde.
 4. IP-Whitelist setzen (empfohlen)
 5. Key und Secret über den Button **API-KEYS** in der GUI eintragen
    → landet in `wallet/bybit_keys.json` (steht in `.gitignore`)
+
+> **Achtung:** Bybit setzt `DerivativesTrade` bei Read-Write-Keys offenbar
+> standardmäßig, auch wenn du den Haken nicht gesetzt hast. Prüfe es danach:
+> ```powershell
+> python cli.py ask "%status%"
+> ```
+> oder direkt im Dashboard unter API → Edit. Erscheint `Derivatives` nicht als
+> leere Liste, ist es trotzdem aktiv. Details in
+> [`docs/BYBIT-EU.md`](docs/BYBIT-EU.md), Abschnitt 8.
 
 ### OpenRouter (optional, für den Assistenten)
 
@@ -164,10 +190,14 @@ getrennte Limits mit Gas-Reserve.
 
 ## Projektstruktur
 
+> **Das hier ist eine Übersicht, keine Befehlsliste.** Diese Dateinamen werden
+> nicht eingegeben. Zum Starten brauchst du `start.bat` oder die Befehle oben.
+
 ```
 cli.py                 Kommandozeile (status, analyse, kosten, paper, daemon, ask)
 trading_gui.py         Grafische Oberfläche (deutsch)
 paper_runner.py        Paper-Daemon für den Dauerbetrieb
+start.bat              Menü für Windows (doppelklicken)
 tests/test_kern.py     30 Tests, ohne Netzwerkzugriff
 
 core/
@@ -184,6 +214,10 @@ core/
   logger.py            Logging (Datei + Konsole)
   config.py            Konfiguration (alle Werte werden gelesen)
   strategies.py        Strategien
+
+docs/
+  BYBIT-EU.md          10 verifizierte API-Fallen der EU-Entity
+  PUBLISH.md           Texte für X, Hacker News und LinkedIn
 ```
 
 **Entfernt in v0.1:** Ein früherer Aufbau enthielt einen „Autonome KI-Firma“-Daemon

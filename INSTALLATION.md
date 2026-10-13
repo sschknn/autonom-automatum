@@ -30,12 +30,52 @@ Ohne `python3-tk` startet die grafische Oberfläche nicht.
 
 ## 4. Starten
 
+### Unter Windows am einfachsten
+
+Doppelklick auf **`start.bat`**. Das Menü prüft vorher, ob Python installiert
+ist, und fragt dann ab, was gestartet werden soll:
+
+```
+  [1] Grafische Oberfläche   [2] Status   [3] Tests   [4] Beenden:
+```
+
+### Oder direkt in der Kommandozeile
+
 ```bash
 python trading_gui.py
 ```
 
 Die Anwendung startet **sofort** im Beobachtungsmodus. Es werden keine
 Keys benötigt, es wird nichts geordert.
+
+### Für erfahrene Nutzer: die Kommandozeile
+
+Jeder Befehl ist **komplett** einzutippen, das `python` gehört dazu. Ohne `python`
+erkennt Windows die `.py`-Datei nicht, sondern meldet
+*„... ist nicht als internes oder externes Cmdlet erkannt"*.
+
+```bash
+python cli.py status        # aktueller Zustand
+python cli.py kosten        # Roundtrip-Kosten
+python cli.py analyse       # technische Analyse je Zeitebene
+python cli.py paper         # Track-Record
+python cli.py daemon        # Dauerlauf, Daten sammeln
+python tests/test_kern.py   # 30 Tests
+```
+
+> **Verwechslungsgefahr:** Die Dateiübersicht im README ist eine *Dokumentation*,
+> keine Befehlsliste. Die Dateinamen dort (`cli.py`, `core/`, …) werden nicht
+> eingegeben. Eingeben werden nur die Befehle aus diesem Abschnitt.
+
+### Deutsches `ä`, `ö`, `ü` fehlt in der Ausgabe
+
+PowerShell zeigt Umlaute manchmal als `?` an. Das ist nur die Konsole, kein
+Fehler im Programm. Abhilfe:
+
+```powershell
+$env:PYTHONIOENCODING="utf-8"
+python cli.py status
+```
 
 ## 5. Optional: Bybit-Keys einrichten
 
