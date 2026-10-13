@@ -31,6 +31,10 @@ Daten laufen, bis du eine Trefferquote **gemessen** statt **behauptet** hast.
 - Spot-Market- und Limit-Orders mit Bybit-Handelsregeln (Lot-Größe, Mindestbetrag, Tick-Größe)
 - **Standard ist immer `dry_run=True`** — es wird nichts gesendet, was du nicht ausdrücklich freigibst
 
+> 📘 **[docs/BYBIT-EU.md](docs/BYBIT-EU.md)** — die gesammelten API-Fallen der
+> EU-Entity: falsche Endpunktnamen, MiCA-Paarbesonderheiten, Zeitversatz,
+> Berechtigungen. Alles live verifiziert, nicht aus der Doku abgeleitet.
+
 ### Analyse
 - RSI, EMA 9/21, ATR auf echten Kerzendaten
 - Multi-Timeframe-Auswertung (5 min / 15 min / 1 h / 4 h)
