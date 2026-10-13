@@ -670,7 +670,8 @@ class TradingGUI:
             self._aktualisiere_bilanz()
             self._diagramm_neu()
             self.l_status.config(text=f"{self.bot.exchange.host_name.upper()} · "
-                                      f"Paper-Modus · Handlungen: {len(self.bot.trade_history)}",
+                                      f"Paper-Modus · echte Order: {len(self.bot.trade_history)} "
+                                      f"| Papier-Trades: {len(self.paper.state['trades'])}",
                                  fg=Grau)
         except Exception as exc:
             self.l_status.config(text=f"Fehler: {exc}", fg=Rot)
