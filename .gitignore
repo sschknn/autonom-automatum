@@ -1,0 +1,11 @@
+# Sensible Daten - nicht pushen
+wallet/local_wallet.json
+wallet/api_keys.json
+wallet/openrouter_key.json
+wallet/wallet_policy.json
+wallet/wallet_qr.png
+wallet/*.json
+wallet/*.png
+core/__pycache__/
+*.log
+data/autonom_core.db
