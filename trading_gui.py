@@ -131,7 +131,8 @@ class TradingGUI:
         self.settings = Settings()
         self.bot = self._bau_bot()
         self.paper = PaperTrader(symbol=self.settings["symbol"],
-                                 initial_quote=self.settings["initial_quote"])
+                                 initial_quote=self.settings["initial_quote"],
+                                 min_confidence=self.settings["min_confidence"])
         self.assistent = Assistant(self.bot, self.paper)
         self.laeuft = True
         self.letzte = None

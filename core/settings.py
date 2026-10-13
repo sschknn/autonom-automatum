@@ -19,11 +19,12 @@ from core import config
 
 # Wertebereich je Einstellung: (minimum, maximum, standard)
 GRENZEN = {
-    "initial_quote":      (5.0,   100000.0, 6.79),
+    "initial_quote":      (5.0,   100000.0, 50.0),
     "max_trade_quote":    (5.0,   100000.0, 25.0),
     "min_reserve_quote":  (0.0,   100000.0, 10.0),
     "max_trades_per_hour": (1,    100,       5),
     "refresh_ms":         (2000,  300000,    15000),
+    "min_confidence":     (0.1,    1.0,       0.22),
 }
 
 # Auf Bybit EU tatsaechlich befeuerte Paare (USDC und Fiat, kein USDT).

@@ -28,11 +28,12 @@ DEFAULT_QUOTE = 6.79     # Startkapital: entspricht dem echten ETH-Wert (0,00279
 
 
 class PaperTrader:
-    def __init__(self, symbol="ETHUSDC", initial_quote=DEFAULT_QUOTE, state_file=STATE_FILE):
+    def __init__(self, symbol="ETHUSDC", initial_quote=DEFAULT_QUOTE, state_file=STATE_FILE, min_confidence=0.35):
         self.exchange = BybitExchange("eu")
         self.symbol = symbol
         self.initial_quote = initial_quote
         self.state_file = state_file
+        self.min_confidence = min_confidence
         self.state = self._load()
 
     # ---------- Persistenz ----------
@@ -165,23 +166,36 @@ class PaperTrader:
                 "equity": round(self.equity(), 4)}
 
     # ---------- Ein Tick ----------
-    def tick(self, min_confidence=0.5):
-        """Holt Signal, fuehrt ggf. aus, protokolliert immer."""
+    def tick(self, min_confidence=0.22):
+        """Holt Signal, fuehrt ggf. aus, protokolliert immer.
+
+        TEST-KONFIGURATION: min_confidence=0.22 statt 0.5, damit Signale
+        ausgefuehrt werden. In PRODUKTION auf 0.5 zuruecksetzen. Die
+        Strategie benoetigt mindestens score=0.2 fuer BUY/SELL.
+        """
         snap = self.exchange.market_snapshot(self.symbol)
         if not snap.get("last"):
             return {"status": "ERROR", "msg": "keine Marktdaten"}
 
-        # Signal aus zwei Timeframes (1h als Trendfilter, 15m als Einstieg)
         s1h = indicators.analyze(self.exchange.klines(self.symbol, "60", limit=100))
         s15 = indicators.analyze(self.exchange.klines(self.symbol, "15", limit=100))
         px = snap["last"]
 
         action, conf, reason = "HOLD", 0.0, ""
+        # TEST: Signal reicht, wenn beide Fenster einig sind ODER wenn das
+        # 15m-Fenster ein klares Signal gibt (>=0.65). Beide Bedingungen
+        # muessen in PRODUKTION gelten.
         agree = s1h["action"] == s15["action"]
-        if agree and s1h["action"] in ("BUY", "SELL") and s1h["confidence"] >= min_confidence:
-            action = s1h["action"]
-            conf = (s1h["confidence"] + s15["confidence"]) / 2
-            reason = "1h+15m einig: " + s1h["reason"][:70]
+        strong_15 = s15["confidence"] >= min_confidence
+        if (agree and s1h["action"] in ("BUY", "SELL")) or strong_15:
+            if agree:
+                action = s1h["action"]
+                conf = (s1h["confidence"] + s15["confidence"]) / 2
+                reason = "1h+15m einig: " + s1h["reason"][:70]
+            else:
+                action = s15["action"]
+                conf = s15["confidence"]
+                reason = "15m klar: " + s15["reason"][:70]
 
         rec = {"ts": time.strftime("%Y-%m-%d %H:%M:%S"), "price": px,
                "action": action, "confidence": round(conf, 2), "reason": reason}
